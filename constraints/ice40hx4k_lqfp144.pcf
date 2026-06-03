@@ -1,0 +1,6 @@
+# iCE40HX4K LQFP144 pin constraints
+# Adjust pin numbers to match your board
+
+set_io clk      49   # 50 MHz clock input
+set_io rst_n_in 52   # Active-low reset (push-button to GND with pull-up)
+set_io led      119  # LED output
