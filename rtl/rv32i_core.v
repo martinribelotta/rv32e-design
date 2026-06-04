@@ -31,26 +31,26 @@ module rv32i_core #(
     wire [31:0] branch_target;
     wire        stall;  // load-use hazard
 
-    wire [31:0] pc_next = take_branch ? branch_target :
-                          stall       ? pc :
-                                        pc + 32'd4;
+    // No stall case: pc only advances when !stall; stall handled by else-if structure.
+    wire [31:0] pc_next = take_branch ? branch_target : pc + 32'd4;
 
     assign imem_addr = pc[$clog2(IMEM_DEPTH)+1:2];  // word address
 
+    // else-if (!stall) structure forces CEN = !stall for all three FFs.
+    // take_branch only appears in the D-mux (inside the active branch), never in CEN.
+    // !stall is computed from a short register-comparison path (no branch_unit involved),
+    // so even after nextpnr promotes !stall to a global CE buffer the critical path is fast.
+    // Correctness: take_branch = (...) && !stall, so take_branch=0 whenever stall=1;
+    // stall=1 correctly holds PC and IF/ID registers for load-use replay.
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            pc            <= 32'd0;
-            if_id_pc      <= 32'd0;
-            if_id_instr   <= 32'h00000013; // NOP (ADDI x0,x0,0)
-        end else begin
-            pc <= pc_next;
-            if (take_branch) begin
-                if_id_pc    <= 32'd0;
-                if_id_instr <= 32'h00000013;
-            end else if (!stall) begin
-                if_id_pc    <= pc;
-                if_id_instr <= imem_rdata;
-            end
+            pc          <= 32'd0;
+            if_id_pc    <= 32'd0;
+            if_id_instr <= 32'h00000013; // NOP (ADDI x0,x0,0)
+        end else if (!stall) begin
+            pc          <= pc_next;
+            if_id_pc    <= take_branch ? 32'd0        : pc;
+            if_id_instr <= take_branch ? 32'h00000013 : imem_rdata;
         end
     end
 
@@ -166,6 +166,23 @@ module rv32i_core #(
     // JAL/JALR write PC+4 to rd
     wire [31:0] id_ex_result = (dec_jal || dec_jalr) ? (if_id_pc + 32'd4) : alu_result;
 
+    // No take_branch flush on the EX/MEM register.
+    //
+    // Removing it serves two purposes:
+    //   1. Fixes a bug: JAL/JALR need their result (PC+4 → rd) to reach MEM/WB.
+    //      Flushing ex_mem_reg_write would silently discard the link register write.
+    //   2. Eliminates the pattern where alu_result/rs2_data/funct3/rd had
+    //      CEN = take_branch | !stall, which Yosys kept as a separate CE signal
+    //      with fanout ~75, triggering nextpnr's global-CE promotion and
+    //      routing that signal through the critical path.
+    //
+    // Safety: after take_branch, if_id_instr is overwritten with NOP
+    // (ADDI x0,x0,0).  The NOP decodes to dec_jal=0, dec_branch=0,
+    // dec_mem_read=0, dec_mem_write=0, dec_rd=x0 — so the bubble that enters
+    // EX/MEM the next cycle is harmless (writes to x0, no memory access).
+    // All assignments fully muxed → CEN=1 for every bit.
+    // stall inserts a NOP bubble by zeroing control signals and clearing rd;
+    // data registers hold their value on stall (don't care, guarded by control).
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ex_mem_alu_result <= 32'd0;
@@ -175,27 +192,14 @@ module rv32i_core #(
             ex_mem_mem_read   <= 1'b0;
             ex_mem_mem_write  <= 1'b0;
             ex_mem_reg_write  <= 1'b0;
-        end else if (take_branch) begin
-            ex_mem_alu_result <= 32'd0;
-            ex_mem_rs2_data   <= 32'd0;
-            ex_mem_rd         <= 5'd0;
-            ex_mem_funct3     <= 3'd0;
-            ex_mem_mem_read   <= 1'b0;
-            ex_mem_mem_write  <= 1'b0;
-            ex_mem_reg_write  <= 1'b0;
-        end else if (stall) begin
-            ex_mem_mem_read   <= 1'b0;
-            ex_mem_mem_write  <= 1'b0;
-            ex_mem_reg_write  <= 1'b0;
-            ex_mem_rd         <= 5'd0;
         end else begin
-            ex_mem_alu_result <= id_ex_result;
-            ex_mem_rs2_data   <= op_b_reg;
-            ex_mem_rd         <= dec_rd;
-            ex_mem_funct3     <= dec_funct3;
-            ex_mem_mem_read   <= dec_mem_read;
-            ex_mem_mem_write  <= dec_mem_write;
-            ex_mem_reg_write  <= dec_reg_write;
+            ex_mem_alu_result <= stall ? ex_mem_alu_result : id_ex_result;
+            ex_mem_rs2_data   <= stall ? ex_mem_rs2_data   : op_b_reg;
+            ex_mem_rd         <= stall ? 5'd0              : dec_rd;
+            ex_mem_funct3     <= stall ? ex_mem_funct3     : dec_funct3;
+            ex_mem_mem_read   <= stall ? 1'b0              : dec_mem_read;
+            ex_mem_mem_write  <= stall ? 1'b0              : dec_mem_write;
+            ex_mem_reg_write  <= stall ? 1'b0              : dec_reg_write;
         end
     end
 

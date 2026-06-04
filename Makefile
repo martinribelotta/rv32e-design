@@ -63,10 +63,7 @@ $(BUILD)/data.hex: | $(BUILD)
 synth: firmware $(BUILD)/$(PROJ).json
 
 $(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/firmware.hex $(BUILD)/data.hex | $(BUILD)
-	cp $(BUILD)/firmware.hex firmware.hex
-	cp $(BUILD)/data.hex     data.hex
-	yosys -q $(YOSYS_FLAGS) $(RTL_SRCS)
-	rm -f firmware.hex data.hex
+	cd $(BUILD) && yosys -q -p "synth_ice40 -top top -json $(PROJ).json" $(abspath $(RTL_SRCS))
 
 # -------------------------------------------------------
 # Place-and-route
@@ -133,4 +130,4 @@ $(BUILD) $(SW_BUILD) $(BUILD)/sim:
 # Clean
 # -------------------------------------------------------
 clean:
-	rm -rf $(BUILD) firmware.hex data.hex
+	rm -rf $(BUILD)
