@@ -4,6 +4,9 @@ module top (
     input  wire rst_n_in,
     output wire led        // heartbeat
 );
+    localparam IMEM_DEPTH = 1024;  // words (4 KB) — 8 EBRs on HX4K
+    localparam DMEM_DEPTH = 1024;  // words (4 KB) — 8 EBRs on HX4K
+
     // Internal reset synchronizer
     reg [2:0] rst_sr;
     always @(posedge clk)
@@ -11,16 +14,19 @@ module top (
     wire rst_n = rst_sr[2];
 
     // Instruction memory wires
-    wire [9:0]  imem_addr;
+    wire [$clog2(IMEM_DEPTH)-1:0] imem_addr;
     wire [31:0] imem_rdata;
 
     // Data memory wires
-    wire [9:0]  dmem_addr;
+    wire [$clog2(DMEM_DEPTH)-1:0] dmem_addr;
     wire [31:0] dmem_wdata;
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata;
 
-    rv32i_core cpu (
+    rv32i_core #(
+        .IMEM_DEPTH (IMEM_DEPTH),
+        .DMEM_DEPTH (DMEM_DEPTH)
+    ) cpu (
         .clk        (clk),
         .rst_n      (rst_n),
         .imem_addr  (imem_addr),

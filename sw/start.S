@@ -69,7 +69,7 @@ geu_ok:
     jal  x30, jal_target
     nop
 jal_target:
-    jalr x31, x30, 4      // return-ish
+    jalr x0, x30, 0       // return to after jal
 
     // Infinite loop to end
 done:

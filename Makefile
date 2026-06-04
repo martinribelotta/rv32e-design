@@ -62,7 +62,7 @@ $(BUILD)/data.hex: | $(BUILD)
 # -------------------------------------------------------
 synth: firmware $(BUILD)/$(PROJ).json
 
-$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/firmware.hex | $(BUILD)
+$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/firmware.hex $(BUILD)/data.hex | $(BUILD)
 	cp $(BUILD)/firmware.hex firmware.hex
 	cp $(BUILD)/data.hex     data.hex
 	yosys -q $(YOSYS_FLAGS) $(RTL_SRCS)

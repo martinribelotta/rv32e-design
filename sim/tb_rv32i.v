@@ -4,14 +4,20 @@
 module tb_rv32i;
     reg clk, rst_n;
 
-    wire [9:0]  imem_addr;
+    localparam IMEM_DEPTH = 1024;
+    localparam DMEM_DEPTH = 1024;
+
+    wire [$clog2(IMEM_DEPTH)-1:0] imem_addr;
     wire [31:0] imem_rdata;
-    wire [9:0]  dmem_addr;
+    wire [$clog2(DMEM_DEPTH)-1:0] dmem_addr;
     wire [31:0] dmem_wdata;
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata;
 
-    rv32i_core dut (
+    rv32i_core #(
+        .IMEM_DEPTH (IMEM_DEPTH),
+        .DMEM_DEPTH (DMEM_DEPTH)
+    ) dut (
         .clk        (clk),
         .rst_n      (rst_n),
         .imem_addr  (imem_addr),

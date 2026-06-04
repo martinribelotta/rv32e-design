@@ -4,14 +4,17 @@
 // Stage 1: IF  - fetch instruction from IMEM
 // Stage 2: ID/EX - decode + register read + ALU execute
 // Stage 3: MEM/WB - memory access + writeback
-module rv32i_core (
+module rv32i_core #(
+    parameter IMEM_DEPTH = 1024,  // words; must match bram_dp DEPTH
+    parameter DMEM_DEPTH = 1024
+) (
     input  wire        clk,
     input  wire        rst_n,
     // Instruction memory interface
-    output wire [9:0]  imem_addr,
+    output wire [$clog2(IMEM_DEPTH)-1:0] imem_addr,
     input  wire [31:0] imem_rdata,
     // Data memory interface
-    output wire [9:0]  dmem_addr,
+    output wire [$clog2(DMEM_DEPTH)-1:0] dmem_addr,
     output wire [31:0] dmem_wdata,
     output wire [3:0]  dmem_we,
     input  wire [31:0] dmem_rdata
@@ -32,7 +35,7 @@ module rv32i_core (
                           stall       ? pc :
                                         pc + 32'd4;
 
-    assign imem_addr = pc[11:2];  // word address into 1K BRAM
+    assign imem_addr = pc[$clog2(IMEM_DEPTH)+1:2];  // word address
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -153,7 +156,9 @@ module rv32i_core (
     );
 
     wire do_branch = dec_branch && branch_taken;
-    assign take_branch = do_branch || dec_jal || dec_jalr;
+    // Gate on !stall: a branch/jump following a load uses forwarded alu_result
+    // (load address) not the loaded data. Stall one cycle to get the real value.
+    assign take_branch = (do_branch || dec_jal || dec_jalr) && !stall;
     assign branch_target = dec_jal  ? (if_id_pc + dec_imm) :
                            dec_jalr ? ((op_a + dec_imm) & ~32'd1) :
                                       (if_id_pc + dec_imm);
@@ -198,8 +203,8 @@ module rv32i_core (
     // MEM/WB stage
     // =========================================================
 
-    // Data memory address is word-addressed (lower 10 bits of byte addr)
-    assign dmem_addr  = ex_mem_alu_result[11:2];
+    // Data memory address is word-addressed
+    assign dmem_addr  = ex_mem_alu_result[$clog2(DMEM_DEPTH)+1:2];
 
     // Store data encoding (combinational)
     wire [31:0] store_wdata;
