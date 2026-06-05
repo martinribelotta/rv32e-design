@@ -90,21 +90,8 @@ $(BUILD)/$(PROJ).bin: $(BUILD)/$(PROJ).asc
 # -------------------------------------------------------
 # Report (reads existing artefacts, no re-synthesis)
 # -------------------------------------------------------
-report: $(BUILD)/$(PROJ).asc
-	@echo "================================================================"
-	@echo " Synthesis statistics (iCE40 primitives)"
-	@echo "================================================================"
-	@yosys -p "read_json $(BUILD)/$(PROJ).json; stat" 2>&1 | grep -E "^=== |^   +[0-9]+ +[A-Z\$$]"
-	@echo "================================================================"
-	@echo " Device utilisation  [$(DEVICE) / $(PACKAGE)]"
-	@echo "================================================================"
-	@grep -A20 "Device utilisation" $(BUILD)/$(PROJ)_pnr.log \
-	    | grep -E "ICESTORM|SB_IO|SB_GB" \
-	    | sed 's/Info: *\t*/  /'
-	@echo "================================================================"
-	@echo " Timing analysis  [target: $(FREQ) MHz]"
-	@echo "================================================================"
-	@icetime -d $(DEVICE) -P $(PACKAGE) -p $(PCF) -t $(BUILD)/$(PROJ).asc
+report:
+	@python3 scripts/report.py $(BUILD) $(PROJ)
 
 timing: $(BUILD)/$(PROJ).asc
 	icetime -d $(DEVICE) -P $(PACKAGE) -p $(PCF) -t $<
