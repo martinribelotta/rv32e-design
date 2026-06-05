@@ -92,11 +92,9 @@ module rv32i_core #(
 
     // EX/MEM pipeline register
     reg [31:0] ex_mem_alu_result;
-    reg [31:0] ex_mem_rs2_data;
     reg [3:0]  ex_mem_rd;
     reg [2:0]  ex_mem_funct3;
     reg        ex_mem_mem_read;
-    reg        ex_mem_mem_write;
     reg        ex_mem_reg_write;
 
     // Load-use hazard: next instr reads a reg written by current load
@@ -186,70 +184,68 @@ module rv32i_core #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ex_mem_alu_result <= 32'd0;
-            ex_mem_rs2_data   <= 32'd0;
             ex_mem_rd         <= 4'd0;
             ex_mem_funct3     <= 3'd0;
             ex_mem_mem_read   <= 1'b0;
-            ex_mem_mem_write  <= 1'b0;
             ex_mem_reg_write  <= 1'b0;
         end else begin
             ex_mem_alu_result <= stall ? ex_mem_alu_result : id_ex_result;
-            ex_mem_rs2_data   <= stall ? ex_mem_rs2_data   : op_b_reg;
             ex_mem_rd         <= stall ? 4'd0              : dec_rd;
             ex_mem_funct3     <= stall ? ex_mem_funct3     : dec_funct3;
             ex_mem_mem_read   <= stall ? 1'b0              : dec_mem_read;
-            ex_mem_mem_write  <= stall ? 1'b0              : dec_mem_write;
             ex_mem_reg_write  <= stall ? 1'b0              : dec_reg_write;
         end
     end
 
     // =========================================================
-    // MEM/WB stage
+    // ID/EX → DMEM interface (address presented one cycle early so the
+    // BRAM's registered output is valid in the MEM/WB stage)
     // =========================================================
 
-    // Data memory address is word-addressed
-    assign dmem_addr  = ex_mem_alu_result[$clog2(DMEM_DEPTH)+1:2];
+    // Word address driven from combinational ALU result (ID/EX stage)
+    assign dmem_addr = alu_result[$clog2(DMEM_DEPTH)+1:2];
 
-    // Store data encoding (combinational)
-    wire [31:0] store_wdata;
-    assign store_wdata = (ex_mem_funct3[1:0] == 2'b00) ?  // SB
-                            {24'h0, ex_mem_rs2_data[7:0]} :
-                         (ex_mem_funct3[1:0] == 2'b01) ?  // SH
-                            {16'h0, ex_mem_rs2_data[15:0]} :
-                                                    ex_mem_rs2_data;  // SW
+    // Store data normalised to byte-lane 0
+    wire [31:0] idex_store_wdata =
+        (dec_funct3[1:0] == 2'b00) ? {24'h0, op_b_reg[7:0]}  :  // SB
+        (dec_funct3[1:0] == 2'b01) ? {16'h0, op_b_reg[15:0]} :  // SH
+                                      op_b_reg;                   // SW
 
-    // Shift store data to correct byte lane
-    wire [31:0] dmem_wdata_tmp =
-        (ex_mem_alu_result[1:0] == 2'b01) ? {store_wdata[23:0], 8'h0} :
-        (ex_mem_alu_result[1:0] == 2'b10) ? {store_wdata[15:0], 16'h0} :
-        (ex_mem_alu_result[1:0] == 2'b11) ? {store_wdata[7:0], 24'h0} :
-                                            store_wdata;
-    assign dmem_wdata = dmem_wdata_tmp;
+    // Shift to correct byte lane
+    wire [31:0] idex_wdata_shifted =
+        (alu_result[1:0] == 2'b01) ? {idex_store_wdata[23:0],  8'h0} :
+        (alu_result[1:0] == 2'b10) ? {idex_store_wdata[15:0], 16'h0} :
+        (alu_result[1:0] == 2'b11) ? {idex_store_wdata[ 7:0], 24'h0} :
+                                      idex_store_wdata;
+    assign dmem_wdata = idex_wdata_shifted;
 
-    // Store byte enables
-    wire [3:0] store_be_tmp =
-        (ex_mem_funct3[1:0] == 2'b00) ?  // SB
-            (4'b0001 << ex_mem_alu_result[1:0]) :
-        (ex_mem_funct3[1:0] == 2'b01) ?  // SH
-            (ex_mem_alu_result[1] ? 4'b1100 : 4'b0011) :
-                                    4'b1111;  // SW
-    assign dmem_we = ex_mem_mem_write ? store_be_tmp : 4'b0000;
+    // Byte enables from combinational decode
+    wire [3:0] idex_store_be =
+        (dec_funct3[1:0] == 2'b00) ? (4'b0001 << alu_result[1:0])       :  // SB
+        (dec_funct3[1:0] == 2'b01) ? (alu_result[1] ? 4'b1100 : 4'b0011) : // SH
+                                      4'b1111;                               // SW
+    assign dmem_we = (dec_mem_write && !stall) ? idex_store_be : 4'b0000;
 
-    // Load data sign extension (combinational)
+    // =========================================================
+    // MEM/WB stage — dmem_rdata is now valid (registered BRAM output)
+    // byte offset comes from ex_mem_alu_result which was registered at
+    // the same clock edge the BRAM address was presented
+    // =========================================================
+
     wire [7:0]  load_byte =
-        (ex_mem_alu_result[1:0] == 2'b00) ? dmem_rdata[7:0] :
-        (ex_mem_alu_result[1:0] == 2'b01) ? dmem_rdata[15:8] :
+        (ex_mem_alu_result[1:0] == 2'b00) ? dmem_rdata[ 7: 0] :
+        (ex_mem_alu_result[1:0] == 2'b01) ? dmem_rdata[15: 8] :
         (ex_mem_alu_result[1:0] == 2'b10) ? dmem_rdata[23:16] :
                                             dmem_rdata[31:24];
 
     wire [15:0] load_half = ex_mem_alu_result[1] ? dmem_rdata[31:16] : dmem_rdata[15:0];
 
     wire [31:0] load_data =
-        (ex_mem_funct3[2:0] == 3'b000) ? {{24{load_byte[7]}}, load_byte} :       // LB
-        (ex_mem_funct3[2:0] == 3'b001) ? {{16{load_half[15]}}, load_half} :     // LH
-        (ex_mem_funct3[2:0] == 3'b010) ? dmem_rdata :                            // LW
-        (ex_mem_funct3[2:0] == 3'b100) ? {24'h0, load_byte} :                   // LBU
-        (ex_mem_funct3[2:0] == 3'b101) ? {16'h0, load_half} :                   // LHU
+        (ex_mem_funct3[2:0] == 3'b000) ? {{24{load_byte[7]}},  load_byte} :  // LB
+        (ex_mem_funct3[2:0] == 3'b001) ? {{16{load_half[15]}}, load_half} :  // LH
+        (ex_mem_funct3[2:0] == 3'b010) ? dmem_rdata :                         // LW
+        (ex_mem_funct3[2:0] == 3'b100) ? {24'h0, load_byte} :                // LBU
+        (ex_mem_funct3[2:0] == 3'b101) ? {16'h0, load_half} :                // LHU
                                          dmem_rdata;
 
     // WB mux
