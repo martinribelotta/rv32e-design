@@ -1,16 +1,40 @@
 // Top-level for iCE40HX4K LQFP144
 module top (
-    input  wire clk,       // 12 MHz on LQFP144 pin
+    input  wire clk,       // 50 MHz oscillator
     input  wire rst_n_in,
     output wire led        // heartbeat
 );
     localparam IMEM_DEPTH = 1024;  // words (4 KB) — 8 EBRs on HX4K
     localparam DMEM_DEPTH = 1024;  // words (4 KB) — 8 EBRs on HX4K
 
-    // Internal reset synchronizer
+    // PLL: 50 MHz → 40 MHz
+    // F_pfd = 50 / (DIVR+1) = 50 / 5     = 10 MHz
+    // VCO   = F_pfd * (DIVF+1) = 10 * 64 = 640 MHz  (in 533–1066 MHz range)
+    // F_out = VCO / 2^DIVQ = 640 / 16    = 40 MHz
+    wire clk_core;
+    wire pll_lock;
+
+    SB_PLL40_CORE #(
+        .FEEDBACK_PATH ("SIMPLE"),
+        .DIVR          (4'd4),
+        .DIVF          (7'd63),
+        .DIVQ          (3'd4),
+        .FILTER_RANGE  (3'b001)
+    ) pll (
+        .REFERENCECLK  (clk),
+        .PLLOUTGLOBAL  (clk_core),
+        .LOCK          (pll_lock),
+        .RESETB        (1'b1),
+        .BYPASS        (1'b0)
+    );
+
+    // Reset synchronizer: hold reset while PLL is unlocked or board reset active.
+    // Uses pll_lock as async clear so the pipeline stays in reset until the
+    // clock is stable.
     reg [2:0] rst_sr;
-    always @(posedge clk)
-        rst_sr <= {rst_sr[1:0], rst_n_in};
+    always @(posedge clk_core or negedge pll_lock)
+        if (!pll_lock) rst_sr <= 3'b000;
+        else           rst_sr <= {rst_sr[1:0], rst_n_in};
     wire rst_n = rst_sr[2];
 
     // Instruction memory wires
@@ -27,7 +51,7 @@ module top (
         .IMEM_DEPTH (IMEM_DEPTH),
         .DMEM_DEPTH (DMEM_DEPTH)
     ) cpu (
-        .clk        (clk),
+        .clk        (clk_core),
         .rst_n      (rst_n),
         .imem_addr  (imem_addr),
         .imem_rdata (imem_rdata),
@@ -41,7 +65,7 @@ module top (
     bram_dp #(
         .INIT_FILE("firmware.hex")
     ) imem (
-        .clk     (clk),
+        .clk     (clk_core),
         .a_addr  (imem_addr),
         .a_rdata (imem_rdata),
         .b_addr  (10'd0),
@@ -52,14 +76,14 @@ module top (
 
     // Memory-mapped I/O: address 0x3FF (last word) is an output register.
     // CPU writes bit[0] to control the LED.
-    wire        io_sel      = (dmem_addr == 10'h3FF);
-    wire [3:0]  dmem_we_ram = io_sel ? 4'b0 : dmem_we;
+    wire       io_sel      = (dmem_addr == 10'h3FF);
+    wire [3:0] dmem_we_ram = io_sel ? 4'b0 : dmem_we;
 
     // Data BRAM
     bram_dp #(
         .INIT_FILE("data.hex")
     ) dmem (
-        .clk     (clk),
+        .clk     (clk_core),
         .a_addr  (10'd0),
         .a_rdata (),
         .b_addr  (dmem_addr),
@@ -70,9 +94,9 @@ module top (
 
     // LED register: written by CPU via memory-mapped I/O at 0x3FF
     reg io_led;
-    always @(posedge clk or negedge rst_n)
-        if (!rst_n)                       io_led <= 1'b0;
-        else if (io_sel && |dmem_we)      io_led <= dmem_wdata[0];
+    always @(posedge clk_core or negedge rst_n)
+        if (!rst_n)               io_led <= 1'b0;
+        else if (io_sel && |dmem_we) io_led <= dmem_wdata[0];
     assign led = io_led;
 
 endmodule

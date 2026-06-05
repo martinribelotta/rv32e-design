@@ -5,7 +5,7 @@ PROJ     := rv32i
 DEVICE   := hx4k
 PACKAGE  := tq144   # LQFP144
 PCF      := constraints/ice40hx4k_lqfp144.pcf
-FREQ     := 50
+FREQ     := 40
 
 BUILD := build
 SW_BUILD := $(BUILD)/sw
@@ -29,8 +29,14 @@ RTL_SRCS := rtl/rv32i_pkg.v \
             rtl/rv32i_core.v \
             rtl/top.v
 
-# Simulation sources
-SIM_SRCS := $(RTL_SRCS) sim/tb_rv32i.v
+# Simulation sources (top.v excluded: contains SB_PLL40_CORE FPGA primitive)
+SIM_SRCS := rtl/rv32i_pkg.v \
+            rtl/bram_dp.v \
+            rtl/alu.v \
+            rtl/regfile.v \
+            rtl/decoder.v \
+            rtl/rv32i_core.v \
+            sim/tb_rv32i.v
 
 # Software toolchain
 RISCV_PREFIX := riscv-none-elf-
