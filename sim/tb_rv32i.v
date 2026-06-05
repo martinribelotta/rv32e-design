@@ -6,6 +6,8 @@ module tb_rv32i;
 
     localparam IMEM_DEPTH = 1024;
     localparam DMEM_DEPTH = 1024;
+    // tohost is the last word of DMEM (byte address 0x1FFC → word 1023)
+    localparam TOHOST_WORD = DMEM_DEPTH - 1;
 
     wire [$clog2(IMEM_DEPTH)-1:0] imem_addr;
     wire [31:0] imem_rdata;
@@ -39,19 +41,47 @@ module tb_rv32i;
     );
 
     initial clk = 0;
-    always #5 clk = ~clk; // 100 MHz sim clock
+    always #5 clk = ~clk;
 
-    integer i;
+    // -------------------------------------------------------
+    // tohost monitor: watch for SW to DMEM word 0
+    // tohost = 1         → PASS
+    // tohost = (n<<1)|1  → FAIL at test n
+    // -------------------------------------------------------
+    integer exit_code;
+    initial exit_code = -1;
+
+    always @(posedge clk) begin
+        if (rst_n && |dmem_we && dmem_addr == TOHOST_WORD) begin
+            exit_code = dmem_wdata;
+        end
+    end
+
+    // -------------------------------------------------------
+    // Run up to MAX_CYCLES then report
+    // -------------------------------------------------------
+    localparam MAX_CYCLES = 50000;
+    integer cycle;
     initial begin
         $dumpfile("tb_rv32i.vcd");
         $dumpvars(0, tb_rv32i);
         rst_n = 0;
         repeat(4) @(posedge clk);
         rst_n = 1;
-        repeat(2000) @(posedge clk);
-        $display("--- Register dump ---");
-        for (i = 0; i < 16; i = i + 1)
-            $display("x%02d = %08h", i, (i == 0) ? 32'd0 : dut.rf.regs[i]);
+
+        for (cycle = 0; cycle < MAX_CYCLES; cycle = cycle + 1) begin
+            @(posedge clk);
+            if (exit_code != -1) begin
+                if (exit_code == 1) begin
+                    $display("PASS");
+                end else begin
+                    $display("FAIL (test %0d)", exit_code >> 1);
+                end
+                $finish;
+            end
+        end
+
+        $display("TIMEOUT after %0d cycles", MAX_CYCLES);
         $finish;
     end
 endmodule

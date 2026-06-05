@@ -45,7 +45,7 @@ LD    := $(RISCV_PREFIX)ld
 OBJCOPY := $(RISCV_PREFIX)objcopy
 AS_FLAGS := -march=rv32e -mabi=ilp32e -nostdlib
 
-.PHONY: all synth pnr bitstream prog sim firmware report timing clean
+.PHONY: all synth pnr bitstream prog sim firmware report timing test clean
 
 all: bitstream
 
@@ -131,6 +131,12 @@ $(BUILD)/sim/tb_rv32i.vvp: $(SIM_SRCS) $(BUILD)/firmware.hex | $(BUILD)/sim
 # -------------------------------------------------------
 $(BUILD) $(SW_BUILD) $(BUILD)/sim:
 	mkdir -p $@
+
+# -------------------------------------------------------
+# Test suite (riscv-tests style, RV32E)
+# -------------------------------------------------------
+test:
+	python3 scripts/run_tests.py $(TESTS)
 
 # -------------------------------------------------------
 # Clean

@@ -24,6 +24,7 @@ module rv32i_core #(
     // PC and IF stage
     // =========================================================
     reg [31:0] pc;
+    reg [31:0] fetch_pc;    // PC of the instruction currently in IMEM (one cycle behind pc)
     reg [31:0] if_id_pc;
     reg [31:0] if_id_instr;
 
@@ -31,26 +32,33 @@ module rv32i_core #(
     wire [31:0] branch_target;
     wire        stall;  // load-use hazard
 
-    // No stall case: pc only advances when !stall; stall handled by else-if structure.
     wire [31:0] pc_next = take_branch ? branch_target : pc + 32'd4;
 
-    assign imem_addr = pc[$clog2(IMEM_DEPTH)+1:2];  // word address
+    // During a stall, pc is frozen at the instruction AFTER the stalled pair.
+    // We need the BRAM to re-fetch the instruction that follows the load (pc-4),
+    // so we back the address up by one word while stall is asserted.
+    assign imem_addr = stall ? pc[$clog2(IMEM_DEPTH)+1:2] - 1
+                             : pc[$clog2(IMEM_DEPTH)+1:2];
 
-    // else-if (!stall) structure forces CEN = !stall for all three FFs.
-    // take_branch only appears in the D-mux (inside the active branch), never in CEN.
-    // !stall is computed from a short register-comparison path (no branch_unit involved),
-    // so even after nextpnr promotes !stall to a global CE buffer the critical path is fast.
-    // Correctness: take_branch = (...) && !stall, so take_branch=0 whenever stall=1;
-    // stall=1 correctly holds PC and IF/ID registers for load-use replay.
+    // Synchronous IMEM: address presented at cycle N → data available at cycle N+1.
+    // fetch_pc tracks the address given to IMEM last cycle, so if_id_pc = correct instr addr.
+    // flush_pending: take_branch inserts one NOP (bubble 1); flush_pending inserts
+    // a second NOP to discard the stale imem_rdata that arrives one cycle after branch.
+    reg flush_pending;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            pc          <= 32'd0;
-            if_id_pc    <= 32'd0;
-            if_id_instr <= 32'h00000013; // NOP (ADDI x0,x0,0)
+            pc            <= 32'd0;
+            fetch_pc      <= 32'd0;
+            if_id_pc      <= 32'd0;
+            if_id_instr   <= 32'h00000013;
+            flush_pending <= 1'b0;
         end else if (!stall) begin
-            pc          <= pc_next;
-            if_id_pc    <= take_branch ? 32'd0        : pc;
-            if_id_instr <= take_branch ? 32'h00000013 : imem_rdata;
+            pc            <= pc_next;
+            fetch_pc      <= pc;           // fetch_pc = address presented to IMEM this cycle
+            flush_pending <= take_branch;
+            if_id_pc      <= (take_branch || flush_pending) ? 32'd0        : fetch_pc;
+            if_id_instr   <= (take_branch || flush_pending) ? 32'h00000013 : imem_rdata;
         end
     end
 
