@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
-`include "../rtl/rv32i_pkg.v"
+`include "../rtl/rv32e_pkg.v"
 
-module tb_rv32i;
+module tb_rv32e;
     reg clk, rst_n;
 
     localparam IMEM_DEPTH = 1024;
@@ -16,7 +16,7 @@ module tb_rv32i;
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata;
 
-    rv32i_core #(
+    rv32e_core #(
         .IMEM_DEPTH (IMEM_DEPTH),
         .DMEM_DEPTH (DMEM_DEPTH)
     ) dut (
@@ -63,8 +63,8 @@ module tb_rv32i;
     localparam MAX_CYCLES = 50000;
     integer cycle;
     initial begin
-        $dumpfile("tb_rv32i.vcd");
-        $dumpvars(0, tb_rv32i);
+        $dumpfile("tb_rv32e.vcd");
+        $dumpvars(0, tb_rv32e);
         rst_n = 0;
         repeat(4) @(posedge clk);
         rst_n = 1;

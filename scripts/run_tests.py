@@ -22,13 +22,13 @@ CFLAGS = [
 ]
 
 SIM_SRCS = [
-    os.path.join(RTL_DIR, "rv32i_pkg.v"),
+    os.path.join(RTL_DIR, "rv32e_pkg.v"),
     os.path.join(RTL_DIR, "bram_dp.v"),
     os.path.join(RTL_DIR, "alu.v"),
     os.path.join(RTL_DIR, "regfile.v"),
     os.path.join(RTL_DIR, "decoder.v"),
-    os.path.join(RTL_DIR, "rv32i_core.v"),
-    os.path.join(SIM_DIR, "tb_rv32i.v"),
+    os.path.join(RTL_DIR, "rv32e_core.v"),
+    os.path.join(SIM_DIR, "tb_rv32e.v"),
 ]
 
 GREEN  = "\033[32m"

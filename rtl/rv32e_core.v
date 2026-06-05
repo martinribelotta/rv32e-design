@@ -1,10 +1,10 @@
-`include "rv32i_pkg.v"
+`include "rv32e_pkg.v"
 
 // RV32I 3-stage pipeline: IF | ID/EX | MEM/WB
 // Stage 1: IF  - fetch instruction from IMEM
 // Stage 2: ID/EX - decode + register read + ALU execute
 // Stage 3: MEM/WB - memory access + writeback
-module rv32i_core #(
+module rv32e_core #(
     parameter IMEM_DEPTH = 1024,  // words; must match bram_dp DEPTH
     parameter DMEM_DEPTH = 1024
 ) (

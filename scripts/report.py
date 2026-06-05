@@ -119,7 +119,7 @@ def parse_yosys_stat(json_path):
 # ── main ─────────────────────────────────────────────────────────────────────
 def main():
     build_dir = sys.argv[1] if len(sys.argv) > 1 else "build"
-    proj      = sys.argv[2] if len(sys.argv) > 2 else "rv32i"
+    proj      = sys.argv[2] if len(sys.argv) > 2 else "rv32e"
 
     pnr_log  = os.path.join(build_dir, f"{proj}_pnr.log")
 

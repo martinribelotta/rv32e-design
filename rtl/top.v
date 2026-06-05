@@ -49,7 +49,7 @@ module top (
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata;
 
-    rv32i_core #(
+    rv32e_core #(
         .IMEM_DEPTH (IMEM_DEPTH),
         .DMEM_DEPTH (DMEM_DEPTH)
     ) cpu (

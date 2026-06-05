@@ -1,7 +1,7 @@
 # RV32I on iCE40HX4K LQFP144
 # Tools: yosys, nextpnr-ice40, icestorm, riscv32-unknown-elf-gcc, iverilog
 
-PROJ     := rv32i
+PROJ     := rv32e
 DEVICE   := hx4k
 PACKAGE  := tq144   # LQFP144
 PCF      := constraints/ice40hx4k_lqfp144.pcf
@@ -21,22 +21,22 @@ PNR_FLAGS := --hx4k --package tq144 \
              --freq $(FREQ)
 
 # RTL sources
-RTL_SRCS := rtl/rv32i_pkg.v \
+RTL_SRCS := rtl/rv32e_pkg.v \
             rtl/bram_dp.v \
             rtl/alu.v \
             rtl/regfile.v \
             rtl/decoder.v \
-            rtl/rv32i_core.v \
+            rtl/rv32e_core.v \
             rtl/top.v
 
 # Simulation sources (top.v excluded: contains SB_PLL40_CORE FPGA primitive)
-SIM_SRCS := rtl/rv32i_pkg.v \
+SIM_SRCS := rtl/rv32e_pkg.v \
             rtl/bram_dp.v \
             rtl/alu.v \
             rtl/regfile.v \
             rtl/decoder.v \
-            rtl/rv32i_core.v \
-            sim/tb_rv32i.v
+            rtl/rv32e_core.v \
+            sim/tb_rv32e.v
 
 # Software toolchain
 RISCV_PREFIX := riscv-none-elf-
@@ -105,10 +105,10 @@ prog: $(BUILD)/$(PROJ).bin
 # -------------------------------------------------------
 # Simulation (iverilog + vvp)
 # -------------------------------------------------------
-sim: firmware $(BUILD)/sim/tb_rv32i.vvp
-	cd $(BUILD)/sim && vvp tb_rv32i.vvp
+sim: firmware $(BUILD)/sim/tb_rv32e.vvp
+	cd $(BUILD)/sim && vvp tb_rv32e.vvp
 
-$(BUILD)/sim/tb_rv32i.vvp: $(SIM_SRCS) $(BUILD)/firmware.hex | $(BUILD)/sim
+$(BUILD)/sim/tb_rv32e.vvp: $(SIM_SRCS) $(BUILD)/firmware.hex | $(BUILD)/sim
 	cp $(BUILD)/firmware.hex $(BUILD)/sim/firmware.hex
 	cp $(BUILD)/data.hex     $(BUILD)/sim/data.hex
 	iverilog -g2005 -I rtl -o $@ $(SIM_SRCS)

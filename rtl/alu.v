@@ -1,4 +1,4 @@
-`include "rv32i_pkg.v"
+`include "rv32e_pkg.v"
 
 module alu (
     input  wire [3:0]  op,

@@ -1,4 +1,4 @@
-`include "rv32i_pkg.v"
+`include "rv32e_pkg.v"
 
 // Combinational decode stage
 module decoder (
