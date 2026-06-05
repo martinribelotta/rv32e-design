@@ -50,7 +50,7 @@ module tb_rv32i;
         rst_n = 1;
         repeat(2000) @(posedge clk);
         $display("--- Register dump ---");
-        for (i = 0; i < 32; i = i + 1)
+        for (i = 0; i < 16; i = i + 1)
             $display("x%02d = %08h", i, (i == 0) ? 32'd0 : dut.rf.regs[i]);
         $finish;
     end

@@ -43,7 +43,7 @@ RISCV_PREFIX := riscv-none-elf-
 AS    := $(RISCV_PREFIX)gcc
 LD    := $(RISCV_PREFIX)ld
 OBJCOPY := $(RISCV_PREFIX)objcopy
-AS_FLAGS := -march=rv32i -mabi=ilp32 -nostdlib
+AS_FLAGS := -march=rv32e -mabi=ilp32e -nostdlib
 
 .PHONY: all synth pnr bitstream prog sim firmware report timing clean
 

@@ -58,7 +58,7 @@ module rv32i_core #(
     // ID/EX stage
     // =========================================================
     wire [6:0]  dec_opcode;
-    wire [4:0]  dec_rs1, dec_rs2, dec_rd;
+    wire [3:0]  dec_rs1, dec_rs2, dec_rd;
     wire [2:0]  dec_funct3;
     wire [6:0]  dec_funct7;
     wire [31:0] dec_imm;
@@ -93,7 +93,7 @@ module rv32i_core #(
     // EX/MEM pipeline register
     reg [31:0] ex_mem_alu_result;
     reg [31:0] ex_mem_rs2_data;
-    reg [4:0]  ex_mem_rd;
+    reg [3:0]  ex_mem_rd;
     reg [2:0]  ex_mem_funct3;
     reg        ex_mem_mem_read;
     reg        ex_mem_mem_write;
@@ -102,13 +102,13 @@ module rv32i_core #(
     // Load-use hazard: next instr reads a reg written by current load
     wire load_use_hazard = ex_mem_mem_read &&
                            ((dec_rs1 == ex_mem_rd) || (dec_rs2 == ex_mem_rd)) &&
-                           (ex_mem_rd != 5'd0);
+                           (ex_mem_rd != 4'd0);
     assign stall = load_use_hazard;
 
     // Register file
     wire [31:0] rf_rdata1, rf_rdata2;
     wire        wb_reg_write;
-    wire [4:0]  wb_rd;
+    wire [3:0]  wb_rd;
     wire [31:0] wb_wdata;
 
     regfile rf (
@@ -124,11 +124,11 @@ module rv32i_core #(
 
     // Forwarding
     // EX/MEM forwarding (result of previous ALU op)
-    wire fwd_ex_rs1 = ex_mem_reg_write && (ex_mem_rd != 5'd0) && (ex_mem_rd == dec_rs1);
-    wire fwd_ex_rs2 = ex_mem_reg_write && (ex_mem_rd != 5'd0) && (ex_mem_rd == dec_rs2);
+    wire fwd_ex_rs1 = ex_mem_reg_write && (ex_mem_rd != 4'd0) && (ex_mem_rd == dec_rs1);
+    wire fwd_ex_rs2 = ex_mem_reg_write && (ex_mem_rd != 4'd0) && (ex_mem_rd == dec_rs2);
     // MEM/WB forwarding
-    wire fwd_wb_rs1 = wb_reg_write && (wb_rd != 5'd0) && (wb_rd == dec_rs1) && !fwd_ex_rs1;
-    wire fwd_wb_rs2 = wb_reg_write && (wb_rd != 5'd0) && (wb_rd == dec_rs2) && !fwd_ex_rs2;
+    wire fwd_wb_rs1 = wb_reg_write && (wb_rd != 4'd0) && (wb_rd == dec_rs1) && !fwd_ex_rs1;
+    wire fwd_wb_rs2 = wb_reg_write && (wb_rd != 4'd0) && (wb_rd == dec_rs2) && !fwd_ex_rs2;
 
     wire [31:0] op_a = fwd_ex_rs1 ? ex_mem_alu_result :
                        fwd_wb_rs1 ? wb_wdata           : rf_rdata1;
@@ -187,7 +187,7 @@ module rv32i_core #(
         if (!rst_n) begin
             ex_mem_alu_result <= 32'd0;
             ex_mem_rs2_data   <= 32'd0;
-            ex_mem_rd         <= 5'd0;
+            ex_mem_rd         <= 4'd0;
             ex_mem_funct3     <= 3'd0;
             ex_mem_mem_read   <= 1'b0;
             ex_mem_mem_write  <= 1'b0;
@@ -195,7 +195,7 @@ module rv32i_core #(
         end else begin
             ex_mem_alu_result <= stall ? ex_mem_alu_result : id_ex_result;
             ex_mem_rs2_data   <= stall ? ex_mem_rs2_data   : op_b_reg;
-            ex_mem_rd         <= stall ? 5'd0              : dec_rd;
+            ex_mem_rd         <= stall ? 4'd0              : dec_rd;
             ex_mem_funct3     <= stall ? ex_mem_funct3     : dec_funct3;
             ex_mem_mem_read   <= stall ? 1'b0              : dec_mem_read;
             ex_mem_mem_write  <= stall ? 1'b0              : dec_mem_write;

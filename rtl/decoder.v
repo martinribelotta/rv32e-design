@@ -4,9 +4,9 @@
 module decoder (
     input  wire [31:0] instr,
     output reg  [6:0]  opcode,
-    output reg  [4:0]  rs1,
-    output reg  [4:0]  rs2,
-    output reg  [4:0]  rd,
+    output reg  [3:0]  rs1,
+    output reg  [3:0]  rs2,
+    output reg  [3:0]  rd,
     output reg  [2:0]  funct3,
     output reg  [6:0]  funct7,
     output reg  [31:0] imm,
@@ -32,9 +32,9 @@ module decoder (
 
     always @(*) begin
         opcode    = op;
-        rs1       = instr[19:15];
-        rs2       = instr[24:20];
-        rd        = instr[11:7];
+        rs1       = instr[18:15];
+        rs2       = instr[23:20];
+        rd        = instr[10:7];
         funct3    = instr[14:12];
         funct7    = instr[31:25];
         imm       = 32'd0;
