@@ -117,11 +117,21 @@ module rv32i_core #(
     wire [3:0]  wb_rd;
     wire [31:0] wb_wdata;
 
+    // BRAM regfile needs the read address ONE cycle early (during IF stage).
+    // Extract rs1/rs2 from imem_rdata (the instruction arriving from IMEM this cycle,
+    // which will become if_id_instr next cycle).
+    // During flush: feed x0 so the BRAM outputs a harmless zero.
+    // During stall: re-present the frozen dec_rs1/dec_rs2 so BRAM re-reads the same regs.
+    wire [3:0] if_rs1 = (take_branch || flush_pending) ? 4'd0 : imem_rdata[18:15];
+    wire [3:0] if_rs2 = (take_branch || flush_pending) ? 4'd0 : imem_rdata[23:20];
+    wire [3:0] rf_rs1 = stall ? dec_rs1 : if_rs1;
+    wire [3:0] rf_rs2 = stall ? dec_rs2 : if_rs2;
+
     regfile rf (
         .clk    (clk),
         .we     (wb_reg_write),
-        .rs1    (dec_rs1),
-        .rs2    (dec_rs2),
+        .rs1    (rf_rs1),
+        .rs2    (rf_rs2),
         .rd     (wb_rd),
         .wdata  (wb_wdata),
         .rdata1 (rf_rdata1),
