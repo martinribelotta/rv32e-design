@@ -2,7 +2,7 @@
 """Convert ELF to $readmemh-compatible .hex (word-addressed, 32-bit)."""
 import sys, struct
 
-def elf2hex(elf_path, hex_path, base_addr, size_words):
+def elf2hex(elf_path, hex_path, base_addr, size_words, fill_word=0x0000006F):
     with open(elf_path, 'rb') as f:
         data = f.read()
 
@@ -12,7 +12,10 @@ def elf2hex(elf_path, hex_path, base_addr, size_words):
     e_phnum  = struct.unpack_from('<H', data, 44)[0]
     e_phentsize = struct.unpack_from('<H', data, 42)[0]
 
-    mem = bytearray(size_words * 4)
+    # Fill with jal x0,0 (0x0000006F) so unused IMEM tiles are non-zero
+    # and icebram can distinguish IMEM from the all-zero DMEM/regfile tiles.
+    fill = struct.pack('<I', fill_word) * size_words
+    mem = bytearray(fill)
 
     for i in range(e_phnum):
         off = e_phoff + i * e_phentsize
@@ -34,7 +37,8 @@ def elf2hex(elf_path, hex_path, base_addr, size_words):
             f.write(f'{word:08x}\n')
 
 if __name__ == '__main__':
-    if len(sys.argv) != 5:
-        print(f'Usage: {sys.argv[0]} <elf> <hex> <base_hex> <size_words>')
+    if len(sys.argv) not in (5, 6):
+        print(f'Usage: {sys.argv[0]} <elf> <hex> <base_hex> <size_words> [fill_hex]')
         sys.exit(1)
-    elf2hex(sys.argv[1], sys.argv[2], int(sys.argv[3], 16), int(sys.argv[4]))
+    fill = int(sys.argv[5], 16) if len(sys.argv) == 6 else 0x0000006F
+    elf2hex(sys.argv[1], sys.argv[2], int(sys.argv[3], 16), int(sys.argv[4]), fill)

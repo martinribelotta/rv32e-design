@@ -45,12 +45,12 @@ LD    := $(RISCV_PREFIX)ld
 OBJCOPY := $(RISCV_PREFIX)objcopy
 AS_FLAGS := -march=rv32e -mabi=ilp32e -nostdlib
 
-.PHONY: all synth pnr bitstream prog sim firmware report timing test clean
+.PHONY: all core synth pnr bitstream fw flash-fw flash-core prog sim firmware report timing test clean
 
-all: bitstream
+all: core
 
 # -------------------------------------------------------
-# Firmware
+# Firmware (software build only)
 # -------------------------------------------------------
 firmware: $(BUILD)/firmware.hex $(BUILD)/data.hex
 
@@ -63,12 +63,21 @@ $(BUILD)/firmware.hex: $(SW_BUILD)/firmware.elf | $(BUILD)
 $(BUILD)/data.hex: | $(BUILD)
 	python3 -c "print('00000000\n' * 1024)" > $@
 
-# -------------------------------------------------------
-# Synthesis
-# -------------------------------------------------------
-synth: firmware $(BUILD)/$(PROJ).json
+# IMEM seed: 1024 random 32-bit words (PRNG, seed=42 → reproducible).
+# Random content ensures all BRAM tiles have unique init data so icebram
+# can locate IMEM tiles without conflicts with DMEM/regfile (all zeros).
+# Also prevents Yosys from constant-folding through the BRAM.
+$(BUILD)/imem_seed.hex: | $(BUILD)
+	python3 -c "import random; r=random.Random(42); \
+	    [print(f'{r.randint(0,0xFFFFFFFF):08x}') for _ in range(1024)]" > $@
 
-$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/firmware.hex $(BUILD)/data.hex | $(BUILD)
+# -------------------------------------------------------
+# Synthesis  (depends on seed; firmware.hex NOT a dependency —
+# firmware changes use 'make fw' and do not trigger re-synthesis)
+# -------------------------------------------------------
+synth: $(BUILD)/$(PROJ).json
+
+$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/imem_seed.hex $(BUILD)/data.hex | $(BUILD)
 	cd $(BUILD) && yosys -q -p "synth_ice40 -top top -json $(PROJ).json" $(abspath $(RTL_SRCS))
 
 # -------------------------------------------------------
@@ -80,12 +89,33 @@ $(BUILD)/$(PROJ).asc: $(BUILD)/$(PROJ).json $(PCF)
 	nextpnr-ice40 $(PNR_FLAGS) --log $(BUILD)/$(PROJ)_pnr.log
 
 # -------------------------------------------------------
-# Bitstream
+# Core bitstream  (full synthesis with current firmware)
 # -------------------------------------------------------
-bitstream: $(BUILD)/$(PROJ).bin
+core: $(BUILD)/$(PROJ).bin
+
+bitstream: core
 
 $(BUILD)/$(PROJ).bin: $(BUILD)/$(PROJ).asc
 	icepack $< $@
+
+# -------------------------------------------------------
+# Firmware update via icebram  (~3 s, no re-synthesis)
+# Replaces IMEM tiles in the existing .asc without touching PnR.
+# Requires 'make core' to have been run at least once.
+# -------------------------------------------------------
+fw: $(BUILD)/firmware.hex $(BUILD)/imem_seed.hex $(BUILD)/$(PROJ).asc
+	icebram $(BUILD)/imem_seed.hex $(BUILD)/firmware.hex \
+	    < $(BUILD)/$(PROJ).asc > $(BUILD)/$(PROJ)_fw.asc
+	icepack $(BUILD)/$(PROJ)_fw.asc $(BUILD)/$(PROJ)_fw.bin
+
+flash-fw: fw
+	iceprog $(BUILD)/$(PROJ)_fw.bin
+
+flash-core: $(BUILD)/$(PROJ).bin
+	iceprog $<
+
+# prog kept as alias for flash-fw (backwards compat)
+prog: flash-fw
 
 # -------------------------------------------------------
 # Report (reads existing artefacts, no re-synthesis)
@@ -95,12 +125,6 @@ report:
 
 timing: $(BUILD)/$(PROJ).asc
 	icetime -d $(DEVICE) -P $(PACKAGE) -p $(PCF) -t $<
-
-# -------------------------------------------------------
-# Programming (via iceprog)
-# -------------------------------------------------------
-prog: $(BUILD)/$(PROJ).bin
-	iceprog $<
 
 # -------------------------------------------------------
 # Simulation (iverilog + vvp)

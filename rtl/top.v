@@ -63,9 +63,11 @@ module top (
         .dmem_rdata (dmem_rdata_mux)
     );
 
-    // Instruction BRAM (port A = read-only fetch)
+    // Instruction BRAM (port A = read-only fetch).
+    // Synthesised with a random seed (imem_seed.hex) so icebram can identify
+    // IMEM tiles uniquely. Real firmware is patched in via 'make fw'.
     bram_dp #(
-        .INIT_FILE("firmware.hex")
+        .INIT_FILE("imem_seed.hex")
     ) imem (
         .clk     (clk_core),
         .a_addr  (imem_addr),
