@@ -11,7 +11,10 @@ BUILD := build
 SW_BUILD := $(BUILD)/sw
 
 # Yosys synthesis flags for iCE40
-YOSYS_FLAGS := -p "synth_ice40 -top top -json $(BUILD)/$(PROJ).json"
+# -dffe_min_ce_use 40: only extract a clock-enable when it feeds >=40 FFs.
+# Keeps the 32-bit CSR write-enables as data-path LUT muxes instead of CE pins,
+# so nextpnr no longer promotes them to the scarce global network (frees 3 SB_GB).
+YOSYS_FLAGS := -p "synth_ice40 -top top -dffe_min_ce_use 40 -json $(BUILD)/$(PROJ).json"
 
 # nextpnr flags
 PNR_FLAGS := --hx4k --package tq144 \
@@ -85,7 +88,7 @@ rtl/imem_seed.hex: $(BUILD)/imem_seed.hex
 synth: $(BUILD)/$(PROJ).json
 
 $(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/imem_seed.hex rtl/imem_seed.hex $(BUILD)/data.hex | $(BUILD)
-	cd $(BUILD) && yosys -q -p "synth_ice40 -top top -json $(PROJ).json" $(abspath $(RTL_SRCS))
+	cd $(BUILD) && yosys -q -p "synth_ice40 -top top -dffe_min_ce_use 40 -json $(PROJ).json" $(abspath $(RTL_SRCS))
 
 # -------------------------------------------------------
 # Place-and-route
