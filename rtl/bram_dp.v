@@ -14,7 +14,7 @@ module bram_dp #(
     input  wire [3:0]               b_we,
     output reg  [WIDTH-1:0]         b_rdata
 );
-    reg [WIDTH-1:0] mem [0:DEPTH-1];
+    (* ram_style = "block" *) reg [WIDTH-1:0] mem [0:DEPTH-1];
 
     integer i;
     initial begin

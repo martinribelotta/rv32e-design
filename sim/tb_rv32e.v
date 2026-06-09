@@ -15,6 +15,7 @@ module tb_rv32e;
     wire [31:0] dmem_wdata;
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata;
+    reg         irq;
 
     rv32e_core #(
         .IMEM_DEPTH (IMEM_DEPTH),
@@ -22,6 +23,7 @@ module tb_rv32e;
     ) dut (
         .clk        (clk),
         .rst_n      (rst_n),
+        .irq        (irq),
         .imem_addr  (imem_addr),
         .imem_rdata (imem_rdata),
         .dmem_addr  (dmem_addr),
@@ -51,9 +53,21 @@ module tb_rv32e;
     integer exit_code;
     initial exit_code = -1;
 
+    integer cycle;
+
     always @(posedge clk) begin
         if (rst_n && |dmem_we && dmem_addr == TOHOST_WORD) begin
             exit_code = dmem_wdata;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            irq <= 1'b0;
+        end else if (cycle == 20) begin
+            irq <= 1'b1;
+        end else begin
+            irq <= 1'b0;
         end
     end
 
@@ -61,11 +75,11 @@ module tb_rv32e;
     // Run up to MAX_CYCLES then report
     // -------------------------------------------------------
     localparam MAX_CYCLES = 50000;
-    integer cycle;
     initial begin
         $dumpfile("tb_rv32e.vcd");
         $dumpvars(0, tb_rv32e);
         rst_n = 0;
+        irq = 0;
         repeat(4) @(posedge clk);
         rst_n = 1;
 

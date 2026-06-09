@@ -23,6 +23,7 @@ PNR_FLAGS := --hx4k --package tq144 \
 # RTL sources
 RTL_SRCS := rtl/rv32e_pkg.v \
             rtl/bram_dp.v \
+            rtl/imem_rom.v \
             rtl/alu.v \
             rtl/regfile.v \
             rtl/decoder.v \
@@ -30,6 +31,7 @@ RTL_SRCS := rtl/rv32e_pkg.v \
             rtl/top.v
 
 # Simulation sources (top.v excluded: contains SB_PLL40_CORE FPGA primitive)
+# imem_rom.v excluded: tb_rv32e instantiates bram_dp directly for IMEM
 SIM_SRCS := rtl/rv32e_pkg.v \
             rtl/bram_dp.v \
             rtl/alu.v \
@@ -71,13 +73,18 @@ $(BUILD)/imem_seed.hex: | $(BUILD)
 	python3 -c "import random; r=random.Random(42); \
 	    [print(f'{r.randint(0,0xFFFFFFFF):08x}') for _ in range(1024)]" > $@
 
+# Yosys resolves $readmemh paths relative to the source file directory (rtl/),
+# not the build CWD. Symlink makes imem_seed.hex visible from rtl/.
+rtl/imem_seed.hex: $(BUILD)/imem_seed.hex
+	ln -sf $(abspath $(BUILD)/imem_seed.hex) rtl/imem_seed.hex
+
 # -------------------------------------------------------
 # Synthesis  (depends on seed; firmware.hex NOT a dependency —
 # firmware changes use 'make fw' and do not trigger re-synthesis)
 # -------------------------------------------------------
 synth: $(BUILD)/$(PROJ).json
 
-$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/imem_seed.hex $(BUILD)/data.hex | $(BUILD)
+$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/imem_seed.hex rtl/imem_seed.hex $(BUILD)/data.hex | $(BUILD)
 	cd $(BUILD) && yosys -q -p "synth_ice40 -top top -json $(PROJ).json" $(abspath $(RTL_SRCS))
 
 # -------------------------------------------------------

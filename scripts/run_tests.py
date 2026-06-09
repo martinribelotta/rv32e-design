@@ -15,7 +15,7 @@ CC      = "riscv-none-elf-gcc"
 OBJCOPY = "riscv-none-elf-objcopy"
 
 CFLAGS = [
-    "-march=rv32e", "-mabi=ilp32e",
+    "-march=rv32e_zicsr", "-mabi=ilp32e",
     "-nostdlib", "-nostartfiles",
     f"-I{TESTS_DIR}",
     "-T", os.path.join(ROOT, "sw", "link.ld"),
@@ -105,6 +105,7 @@ def main():
     for src in all_srcs:
         name = os.path.splitext(os.path.basename(src))[0]
         workdir = tempfile.mkdtemp(prefix=f"rv32e_{name}_")
+        result = ""
         try:
             _, err = compile_test(src, workdir)
             if err:

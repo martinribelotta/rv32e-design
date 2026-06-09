@@ -28,6 +28,23 @@
 `define ALU_AND  4'd9
 `define ALU_PASS 4'd10
 
+// CSR addresses
+`define CSR_MSTATUS 12'h300
+`define CSR_MIE     12'h304
+`define CSR_MTVEC   12'h305
+`define CSR_MEPC    12'h341
+`define CSR_MCAUSE  12'h342
+`define CSR_MCYCLE  12'hB00
+`define CSR_MCYCLEH 12'hB80
+
+// CSR command types
+`define CSR_RW   3'd1
+`define CSR_RS   3'd2
+`define CSR_RC   3'd3
+`define CSR_RWZ  3'd5
+`define CSR_RSZI 3'd6
+`define CSR_RCZI 3'd7
+
 // Branch types
 `define BR_EQ  3'd0
 `define BR_NE  3'd1

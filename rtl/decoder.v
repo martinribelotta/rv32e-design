@@ -19,7 +19,15 @@ module decoder (
     output reg         jal,
     output reg         jalr,
     output reg         lui,
-    output reg         auipc
+    output reg         auipc,
+    output reg         csr,
+    output reg [2:0]   csr_cmd,
+    output reg         csr_imm,
+    output reg [11:0]  csr_addr,
+    output reg         ecall,
+    output reg         ebreak,
+    output reg         mret,
+    output reg         fence
 );
     wire [6:0] op = instr[6:0];
 
@@ -48,6 +56,14 @@ module decoder (
         jalr      = 1'b0;
         lui       = 1'b0;
         auipc     = 1'b0;
+        csr       = 1'b0;
+        csr_cmd   = 3'd0;
+        csr_imm   = 1'b0;
+        csr_addr  = 12'd0;
+        ecall     = 1'b0;
+        ebreak    = 1'b0;
+        mret      = 1'b0;
+        fence     = 1'b0;
 
         case (op)
             `OP_LUI: begin
@@ -114,6 +130,26 @@ module decoder (
                     4'b0111: alu_op = `ALU_AND;
                     default: alu_op = `ALU_ADD;
                 endcase
+            end
+            `OP_SYSTEM: begin
+                csr_addr = instr[31:20];
+                case (instr[14:12])
+                    3'b000: begin
+                        if (instr[31:20] == 12'h000) ecall = 1'b1;
+                        else if (instr[31:20] == 12'h001) ebreak = 1'b1;
+                        else if (instr[31:20] == 12'h302) mret = 1'b1;
+                    end
+                    3'b001: begin csr = 1'b1; csr_cmd = `CSR_RW; reg_write = 1'b1; end
+                    3'b010: begin csr = 1'b1; csr_cmd = `CSR_RS; reg_write = 1'b1; end
+                    3'b011: begin csr = 1'b1; csr_cmd = `CSR_RC; reg_write = 1'b1; end
+                    3'b101: begin csr = 1'b1; csr_cmd = `CSR_RWZ; csr_imm = 1'b1; reg_write = 1'b1; end
+                    3'b110: begin csr = 1'b1; csr_cmd = `CSR_RSZI; csr_imm = 1'b1; reg_write = 1'b1; end
+                    3'b111: begin csr = 1'b1; csr_cmd = `CSR_RCZI; csr_imm = 1'b1; reg_write = 1'b1; end
+                    default: begin end
+                endcase
+            end
+            `OP_FENCE: begin
+                fence = 1'b1;
             end
             default: begin end
         endcase

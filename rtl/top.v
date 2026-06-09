@@ -55,6 +55,7 @@ module top (
     ) cpu (
         .clk        (clk_core),
         .rst_n      (rst_n),
+        .irq        (1'd0),
         .imem_addr  (imem_addr),
         .imem_rdata (imem_rdata),
         .dmem_addr  (dmem_addr),
@@ -63,19 +64,16 @@ module top (
         .dmem_rdata (dmem_rdata_mux)
     );
 
-    // Instruction BRAM (port A = read-only fetch).
+    // Instruction ROM (read-only fetch).
     // Synthesised with a random seed (imem_seed.hex) so icebram can identify
     // IMEM tiles uniquely. Real firmware is patched in via 'make fw'.
-    bram_dp #(
+    imem_rom #(
+        .DEPTH    (IMEM_DEPTH),
         .INIT_FILE("imem_seed.hex")
     ) imem (
-        .clk     (clk_core),
-        .a_addr  (imem_addr),
-        .a_rdata (imem_rdata),
-        .b_addr  (10'd0),
-        .b_wdata (32'd0),
-        .b_we    (4'd0),
-        .b_rdata ()
+        .clk   (clk_core),
+        .addr  (imem_addr),
+        .rdata (imem_rdata)
     );
 
     // Memory-mapped I/O (word addresses in DMEM):
