@@ -1,2 +1,5 @@
 build/*
 rtl/imem_seed.hex
+**/__pycache__/
+sim/cocotb/results.xml
+.claude/

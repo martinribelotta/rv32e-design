@@ -156,9 +156,22 @@ $(BUILD) $(SW_BUILD) $(BUILD)/sim:
 	mkdir -p $@
 
 # -------------------------------------------------------
-# Test suite (riscv-tests style, RV32E)
+# Test suite — cocotb + pyuvm
+# TESTS=add branch ...  runs only those tests (regex filter)
 # -------------------------------------------------------
+ifdef TESTS
+  # "TESTS=add branch" → COCOTB_TEST_FILTER="test_add|test_branch"
+  pipe       := |
+  space      := $(empty) $(empty)
+  _RAW       := $(subst $(space),$(pipe),$(addprefix test_,$(TESTS)))
+  _COCOTB_EXTRA := COCOTB_TEST_FILTER='$(_RAW)'
+endif
+
 test:
+	$(MAKE) -C sim/cocotb $(_COCOTB_EXTRA)
+
+# Legacy iverilog runner (kept for quick offline smoke-tests)
+test-iverilog:
 	python3 scripts/run_tests.py $(TESTS)
 
 # -------------------------------------------------------
@@ -166,3 +179,4 @@ test:
 # -------------------------------------------------------
 clean:
 	rm -rf $(BUILD)
+	$(MAKE) -C sim/cocotb clean 2>/dev/null || true

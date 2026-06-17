@@ -3,8 +3,8 @@
 RVTEST_RV32E
 RVTEST_CODE_BEGIN
 
-    // Configure interrupt handler
-    li   x1, 0x00000100
+    // Configure interrupt handler — use la so the address is computed by the assembler
+    la   x1, _handler
     csrw mtvec, x1
 
     // Enable external IRQ (MEIE) and global MIE
@@ -16,8 +16,8 @@ RVTEST_CODE_BEGIN
     // Clear handler flag
     li   x5, 0
 
-    // Wait for the external IRQ to arrive
-    li   x2, 50
+    // Wait for the external IRQ to arrive (BFM pulses irq at cycle ~30)
+    li   x2, 200
 wait_loop:
     addi x2, x2, -1
     bnez x2, wait_loop
