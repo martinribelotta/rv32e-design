@@ -1,4 +1,14 @@
 // Top-level for iCE40HX4K LQFP144
+//
+// Peripheral bus — DMEM word addresses (SW byte addresses: base DMEM = 0x1000):
+//   0x3C0  0x1F00  GPIO OUT  (R/W)
+//   0x3C1  0x1F04  GPIO IN   (R)
+//   0x3C2  0x1F08  GPIO DIR  (R/W, 1=output)
+//   0x3D0  0x1F40  UART DATA (W=TX, R=RX — read clears rx_valid)
+//   0x3D1  0x1F44  UART STATUS  bit0=tx_ready  bit1=rx_valid
+//   0x3D2  0x1F48  UART BAUD    divisor[15:0]  period=(div+1) cycles
+//                              default=346 → 115200 baud @ 40 MHz
+//
 module top (
     input  wire        clk,         // 50 MHz oscillator
     output wire [7:0]  leds,
@@ -39,11 +49,11 @@ module top (
         if (!pll_lock)  rst_cnt <= 12'd0;
         else if (!rst_n) rst_cnt <= rst_cnt + 12'd1;
 
-    // Instruction memory wires
+    // -------------------------------------------------------
+    // CPU ports
+    // -------------------------------------------------------
     wire [$clog2(IMEM_DEPTH)-1:0] imem_addr;
     wire [31:0] imem_rdata;
-
-    // Data memory wires
     wire [$clog2(DMEM_DEPTH)-1:0] dmem_addr;
     wire [31:0] dmem_wdata;
     wire [3:0]  dmem_we;
@@ -64,9 +74,9 @@ module top (
         .dmem_rdata (dmem_rdata_mux)
     );
 
-    // Instruction ROM (read-only fetch).
-    // Synthesised with a random seed (imem_seed.hex) so icebram can identify
-    // IMEM tiles uniquely. Real firmware is patched in via 'make fw'.
+    // -------------------------------------------------------
+    // Instruction ROM (seed → replaced by 'make fw' via icebram)
+    // -------------------------------------------------------
     imem_rom #(
         .DEPTH    (IMEM_DEPTH),
         .INIT_FILE("imem_seed.hex")
@@ -76,14 +86,36 @@ module top (
         .rdata (imem_rdata)
     );
 
-    // Memory-mapped I/O (word addresses in DMEM):
-    //   0x3F8  buttons[7:0]  (read)
-    //   0x3FF  leds[7:0]     (write)
-    wire io_sel_led     = (dmem_addr == 10'h3FF);
-    wire io_sel_buttons = (dmem_addr == 10'h3F8);
-    wire [3:0] dmem_we_ram = (io_sel_led | io_sel_buttons) ? 4'b0 : dmem_we;
+    // -------------------------------------------------------
+    // Peripheral address decode
+    //   io_sel   : dmem_addr[9:6] == 4'hF  →  0x3C0-0x3FF
+    //   gpio_sel : dmem_addr[9:2] == 8'hF0 →  0x3C0-0x3C3
+    //   uart_sel : dmem_addr[9:2] == 8'hF4 →  0x3D0-0x3D3
+    // -------------------------------------------------------
+    wire io_sel   = (dmem_addr[9:6] == 4'hF);
+    wire gpio_sel = (dmem_addr[9:2] == 8'hF0);
+    wire uart_sel = (dmem_addr[9:2] == 8'hF4);
 
-    // Data BRAM
+    wire gpio_we  = gpio_sel & |dmem_we;
+    wire uart_we  = uart_sel & |dmem_we;
+
+    // Register sel one cycle to align read mux with registered peripheral rdata
+    reg gpio_sel_r, uart_sel_r;
+    always @(posedge clk_core or negedge rst_n) begin
+        if (!rst_n) begin
+            gpio_sel_r <= 1'b0;
+            uart_sel_r <= 1'b0;
+        end else begin
+            gpio_sel_r <= gpio_sel;
+            uart_sel_r <= uart_sel;
+        end
+    end
+
+    // -------------------------------------------------------
+    // Data BRAM — writes to I/O range are blocked
+    // -------------------------------------------------------
+    wire [3:0] dmem_we_ram = io_sel ? 4'b0 : dmem_we;
+
     bram_dp #(
         .INIT_FILE("data.hex")
     ) dmem (
@@ -96,23 +128,56 @@ module top (
         .b_rdata (dmem_rdata)
     );
 
-    // LED register: written at 0x3FF, bits[7:0]
-    reg [7:0] io_led;
-    always @(posedge clk_core or negedge rst_n)
-        if (!rst_n)                      io_led <= 8'h00;
-        else if (io_sel_led && |dmem_we) io_led <= dmem_wdata[7:0];
-    assign leds = io_led;
+    // -------------------------------------------------------
+    // GPIO peripheral
+    // pin_out → leds (PCF: always-output pins)
+    // pin_in  ← buttons (PCF: always-input pins)
+    // -------------------------------------------------------
+    wire [31:0] gpio_rdata;
+    wire [7:0]  gpio_pin_out;
+    wire [7:0]  gpio_pin_oe;   // available for future SB_IO expansion
 
-    // Buttons read mux: BRAM output is registered (synchronous), so register
-    // io_sel_buttons one cycle to align with when b_rdata is valid.
-    reg io_sel_buttons_r;
-    always @(posedge clk_core or negedge rst_n)
-        if (!rst_n) io_sel_buttons_r <= 1'b0;
-        else        io_sel_buttons_r <= io_sel_buttons;
+    gpio #(.WIDTH(8)) gpio0 (
+        .clk     (clk_core),
+        .rst_n   (rst_n),
+        .sel     (gpio_sel),
+        .addr    (dmem_addr[1:0]),
+        .wdata   (dmem_wdata),
+        .we      (gpio_we),
+        .rdata   (gpio_rdata),
+        .pin_in  (buttons),
+        .pin_out (gpio_pin_out),
+        .pin_oe  (gpio_pin_oe)
+    );
 
-    wire [31:0] dmem_rdata_mux = io_sel_buttons_r ? {24'b0, buttons} : dmem_rdata;
+    assign leds = gpio_pin_out;
 
-    // UART passthrough placeholder
-    assign uart_tx = uart_rx;
+    // -------------------------------------------------------
+    // UART peripheral
+    // -------------------------------------------------------
+    wire [31:0] uart_rdata;
+
+    uart #(
+        .CLK_FREQ  (40_000_000),
+        .BAUD_RATE (115_200)
+    ) uart0 (
+        .clk   (clk_core),
+        .rst_n (rst_n),
+        .sel   (uart_sel),
+        .addr  (dmem_addr[1:0]),
+        .wdata (dmem_wdata),
+        .we    (uart_we),
+        .rdata (uart_rdata),
+        .rx    (uart_rx),
+        .tx    (uart_tx)
+    );
+
+    // -------------------------------------------------------
+    // DMEM read mux — all sources have 1-cycle registered latency
+    // -------------------------------------------------------
+    wire [31:0] dmem_rdata_mux =
+        gpio_sel_r ? gpio_rdata :
+        uart_sel_r ? uart_rdata :
+        dmem_rdata;
 
 endmodule
