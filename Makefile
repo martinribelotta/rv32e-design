@@ -47,41 +47,77 @@ SIM_SRCS := rtl/rv32e_pkg.v \
 
 # Software toolchain
 RISCV_PREFIX := riscv-none-elf-
-AS    := $(RISCV_PREFIX)gcc
-LD    := $(RISCV_PREFIX)ld
+CC      := $(RISCV_PREFIX)gcc
+AS      := $(RISCV_PREFIX)gcc
+LD      := $(RISCV_PREFIX)ld
 OBJCOPY := $(RISCV_PREFIX)objcopy
+
+# Firmware app to build/flash — lives in sw/apps/<APP>.
+# Override on the command line:  make APP=hello_uart flash-fw
+APP ?= blink
+APP_DIR := sw/apps/$(APP)
+
+# C firmware build flags. RV32E has no hardware mul/div, so -lgcc supplies the
+# soft routines. -msmall-data-limit=0 keeps everything in .data/.bss/.rodata
+# (no gp-relative addressing → no global-pointer setup needed in crt0).
+CFLAGS := -march=rv32e_zicsr -mabi=ilp32e -Os -ffreestanding \
+          -nostdlib -nostartfiles -fno-builtin -msmall-data-limit=0 \
+          -ffunction-sections -fdata-sections -Wall -Isw/common
+LDFLAGS := -Wl,--gc-sections -T sw/common/firmware.ld
+
+# Shared runtime + the selected app's sources
+SW_SRCS := sw/common/crt0.S sw/common/soc.c $(wildcard $(APP_DIR)/*.c)
+
+# Assembly-only flags for the legacy iverilog smoke-test (sw/start.S)
 AS_FLAGS := -march=rv32e -mabi=ilp32e -nostdlib
 
-.PHONY: all core synth pnr bitstream fw flash-fw flash-core prog sim firmware report timing test clean
+.PHONY: all core synth pnr bitstream fw flash-fw flash-core prog sim firmware report timing test test-top clean FORCE
 
 all: core
 
 # -------------------------------------------------------
-# Firmware (software build only)
+# Firmware (software build only) — compiles C app in sw/apps/$(APP)
+#   firmware.hex : .text                  → IMEM   (1024 words)
+#   drom.hex     : .rodata + .data image  → DROM   (512 words, icebram-patchable)
+# DRAM (.bss/.data runtime/stack) is zero-initialised in hardware — no image.
 # -------------------------------------------------------
-firmware: $(BUILD)/firmware.hex $(BUILD)/data.hex
+firmware: $(BUILD)/firmware.hex $(BUILD)/drom.hex
 
-$(SW_BUILD)/firmware.elf: sw/start.S sw/link.ld | $(SW_BUILD)
-	$(AS) $(AS_FLAGS) -T sw/link.ld sw/start.S -o $@
+# Rebuild the firmware whenever APP changes (.app records the last-built app).
+$(BUILD)/.app: FORCE | $(BUILD)
+	@echo "$(APP)" | cmp -s - $@ 2>/dev/null || echo "$(APP)" > $@
+
+FORCE:
+
+$(SW_BUILD)/firmware.elf: $(SW_SRCS) sw/common/firmware.ld $(BUILD)/.app | $(SW_BUILD)
+	$(CC) $(CFLAGS) $(SW_SRCS) $(LDFLAGS) -o $@ -lgcc
 
 $(BUILD)/firmware.hex: $(SW_BUILD)/firmware.elf | $(BUILD)
 	python3 scripts/elf2hex.py $< $@ 0x00000000 1024
 
-$(BUILD)/data.hex: | $(BUILD)
-	python3 -c "print('00000000\n' * 1024)" > $@
+$(BUILD)/drom.hex: $(SW_BUILD)/firmware.elf | $(BUILD)
+	python3 scripts/elf2hex.py $< $@ 0x00001000 512 0
 
-# IMEM seed: 1024 random 32-bit words (PRNG, seed=42 → reproducible).
-# Random content ensures all BRAM tiles have unique init data so icebram
-# can locate IMEM tiles without conflicts with DMEM/regfile (all zeros).
-# Also prevents Yosys from constant-folding through the BRAM.
+# IMEM/DROM seeds: random 32-bit words (reproducible PRNG). Random content gives
+# every BRAM tile unique init data so icebram can locate and patch the IMEM and
+# DROM tiles without re-synthesis. The two seeds use DIFFERENT PRNG seeds (42/99)
+# and DIFFERENT depths so the memories never collide. Random init also stops
+# Yosys from constant-folding through the BRAMs.
 $(BUILD)/imem_seed.hex: | $(BUILD)
 	python3 -c "import random; r=random.Random(42); \
 	    [print(f'{r.randint(0,0xFFFFFFFF):08x}') for _ in range(1024)]" > $@
 
+$(BUILD)/drom_seed.hex: | $(BUILD)
+	python3 -c "import random; r=random.Random(99); \
+	    [print(f'{r.randint(0,0xFFFFFFFF):08x}') for _ in range(512)]" > $@
+
 # Yosys resolves $readmemh paths relative to the source file directory (rtl/),
-# not the build CWD. Symlink makes imem_seed.hex visible from rtl/.
+# not the build CWD. Symlinks make the seeds visible from rtl/.
 rtl/imem_seed.hex: $(BUILD)/imem_seed.hex
 	ln -sf $(abspath $(BUILD)/imem_seed.hex) rtl/imem_seed.hex
+
+rtl/drom_seed.hex: $(BUILD)/drom_seed.hex
+	ln -sf $(abspath $(BUILD)/drom_seed.hex) rtl/drom_seed.hex
 
 # -------------------------------------------------------
 # Synthesis  (depends on seed; firmware.hex NOT a dependency —
@@ -89,7 +125,7 @@ rtl/imem_seed.hex: $(BUILD)/imem_seed.hex
 # -------------------------------------------------------
 synth: $(BUILD)/$(PROJ).json
 
-$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/imem_seed.hex rtl/imem_seed.hex $(BUILD)/data.hex | $(BUILD)
+$(BUILD)/$(PROJ).json: $(RTL_SRCS) $(BUILD)/imem_seed.hex rtl/imem_seed.hex $(BUILD)/drom_seed.hex rtl/drom_seed.hex | $(BUILD)
 	cd $(BUILD) && yosys -q -p "synth_ice40 -top top -dffe_min_ce_use 40 -json $(PROJ).json" $(abspath $(RTL_SRCS))
 
 # -------------------------------------------------------
@@ -112,12 +148,14 @@ $(BUILD)/$(PROJ).bin: $(BUILD)/$(PROJ).asc
 
 # -------------------------------------------------------
 # Firmware update via icebram  (~3 s, no re-synthesis)
-# Replaces IMEM tiles in the existing .asc without touching PnR.
-# Requires 'make core' to have been run at least once.
+# Patches IMEM (.text) and DROM (.rodata/.data image) tiles in the existing .asc
+# without touching synthesis/PnR. Requires 'make core' to have run at least once.
 # -------------------------------------------------------
-fw: $(BUILD)/firmware.hex $(BUILD)/imem_seed.hex $(BUILD)/$(PROJ).asc
+fw: $(BUILD)/firmware.hex $(BUILD)/drom.hex $(BUILD)/imem_seed.hex $(BUILD)/drom_seed.hex $(BUILD)/$(PROJ).asc
 	icebram $(BUILD)/imem_seed.hex $(BUILD)/firmware.hex \
-	    < $(BUILD)/$(PROJ).asc > $(BUILD)/$(PROJ)_fw.asc
+	    < $(BUILD)/$(PROJ).asc       > $(BUILD)/$(PROJ)_fw1.asc
+	icebram $(BUILD)/drom_seed.hex $(BUILD)/drom.hex \
+	    < $(BUILD)/$(PROJ)_fw1.asc   > $(BUILD)/$(PROJ)_fw.asc
 	icepack $(BUILD)/$(PROJ)_fw.asc $(BUILD)/$(PROJ)_fw.bin
 
 flash-fw: fw
@@ -139,14 +177,23 @@ timing: $(BUILD)/$(PROJ).asc
 	icetime -d $(DEVICE) -P $(PACKAGE) -p $(PCF) -t $<
 
 # -------------------------------------------------------
-# Simulation (iverilog + vvp)
+# Simulation (iverilog + vvp) — quick offline smoke-test.
+# Uses sw/start.S (terminates via tohost), independent of the C APP firmware
+# (a C app such as blink loops forever and would time out the testbench).
 # -------------------------------------------------------
-sim: firmware $(BUILD)/sim/tb_rv32e.vvp
+sim: $(BUILD)/sim/tb_rv32e.vvp
 	cd $(BUILD)/sim && vvp tb_rv32e.vvp
 
-$(BUILD)/sim/tb_rv32e.vvp: $(SIM_SRCS) $(BUILD)/firmware.hex | $(BUILD)/sim
-	cp $(BUILD)/firmware.hex $(BUILD)/sim/firmware.hex
-	cp $(BUILD)/data.hex     $(BUILD)/sim/data.hex
+$(BUILD)/sim/start.elf: sw/start.S sw/link.ld | $(BUILD)/sim
+	$(AS) $(AS_FLAGS) -T sw/link.ld sw/start.S -o $@
+
+$(BUILD)/sim/firmware.hex: $(BUILD)/sim/start.elf | $(BUILD)/sim
+	python3 scripts/elf2hex.py $< $@ 0x00000000 1024
+
+$(BUILD)/sim/data.hex: | $(BUILD)/sim
+	python3 -c "print('00000000\n' * 1024)" > $@
+
+$(BUILD)/sim/tb_rv32e.vvp: $(SIM_SRCS) $(BUILD)/sim/firmware.hex $(BUILD)/sim/data.hex | $(BUILD)/sim
 	iverilog -g2005 -I rtl -o $@ $(SIM_SRCS)
 
 # -------------------------------------------------------
@@ -170,6 +217,12 @@ endif
 test:
 	$(MAKE) -C sim/cocotb $(_COCOTB_EXTRA)
 
+# Top-level integration test: runs a real C app on top.v and decodes uart_tx.
+# Defaults to hello_uart (sim/cocotb_top's own default); pass APP=echo to override.
+# (APP=blink — the global default — has no UART output, so it is not forwarded.)
+test-top:
+	$(MAKE) -C sim/cocotb_top $(if $(filter-out blink,$(APP)),APP=$(APP))
+
 # Legacy iverilog runner (kept for quick offline smoke-tests)
 test-iverilog:
 	python3 scripts/run_tests.py $(TESTS)
@@ -180,3 +233,4 @@ test-iverilog:
 clean:
 	rm -rf $(BUILD)
 	$(MAKE) -C sim/cocotb clean 2>/dev/null || true
+	$(MAKE) -C sim/cocotb_top clean 2>/dev/null || true
