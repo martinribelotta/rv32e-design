@@ -17,17 +17,20 @@ def elf2hex(elf_path, hex_path, base_addr, size_words, fill_word=0x0000006F):
     fill = struct.pack('<I', fill_word) * size_words
     mem = bytearray(fill)
 
+    # Place each segment by its LOAD address (p_paddr / LMA), not its run
+    # address (p_vaddr). They are equal unless a section uses 'AT>' (e.g. .data,
+    # whose init image is loaded into DROM but runs from DRAM).
     for i in range(e_phnum):
         off = e_phoff + i * e_phentsize
         p_type   = struct.unpack_from('<I', data, off)[0]
         p_offset = struct.unpack_from('<I', data, off + 4)[0]
-        p_vaddr  = struct.unpack_from('<I', data, off + 8)[0]
+        p_paddr  = struct.unpack_from('<I', data, off + 12)[0]
         p_filesz = struct.unpack_from('<I', data, off + 16)[0]
         if p_type != 1:  # PT_LOAD
             continue
-        if p_vaddr < base_addr or p_vaddr >= base_addr + len(mem):
+        if p_paddr < base_addr or p_paddr >= base_addr + len(mem):
             continue
-        dst = p_vaddr - base_addr
+        dst = p_paddr - base_addr
         seg = data[p_offset:p_offset + p_filesz]
         mem[dst:dst + len(seg)] = seg
 

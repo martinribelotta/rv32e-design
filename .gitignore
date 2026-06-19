@@ -1,5 +1,9 @@
 build/*
 rtl/imem_seed.hex
+rtl/drom_seed.hex
 **/__pycache__/
 sim/cocotb/results.xml
+sim/cocotb_top/results.xml
+sim/cocotb_top/imem_seed.hex
+sim/cocotb_top/drom_seed.hex
 .claude/
