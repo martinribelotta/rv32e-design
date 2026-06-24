@@ -12,6 +12,10 @@
 //   0x3D1  0x1F44  UART STATUS  bit0=tx_ready  bit1=rx_valid
 //   0x3D2  0x1F48  UART BAUD    divisor[15:0]  period=(div+1) cycles
 //                              default=346 → 115200 baud @ 40 MHz
+//   0x3D4  0x1F50  MTIME    [31:0]   (R/W) free-running 64-bit machine timer
+//   0x3D5  0x1F54  MTIME    [63:32]
+//   0x3D6  0x1F58  MTIMECMP [31:0]   (R/W) timer compare → MTIP when mtime>=cmp
+//   0x3D7  0x1F5C  MTIMECMP [63:32]
 //
 module top (
     input  wire        clk,         // 50 MHz oscillator
@@ -74,6 +78,7 @@ module top (
     wire [31:0] dmem_wdata;
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata_mux;   // data read mux (driven at end of module)
+    wire        timer_irq;        // machine timer interrupt (mtimer → core)
 
     rv32e_core #(
         .IMEM_DEPTH (IMEM_DEPTH),
@@ -81,7 +86,8 @@ module top (
     ) cpu (
         .clk        (clk_core),
         .rst_n      (rst_n),
-        .irq        (1'd0),
+        .irq        (1'd0),          // no external interrupt source
+        .timer_irq  (timer_irq),     // machine timer (mtimer peripheral)
         .imem_addr  (imem_addr),
         .imem_rdata (imem_rdata),
         .dmem_addr  (dmem_addr),
@@ -109,29 +115,34 @@ module top (
     //   io_sel   : dmem_addr[9:6] == F  →  0x1F00-0x1FFF  peripherals
     //   gpio_sel : dmem_addr[9:2] == F0 →  0x1F00-0x1F0C
     //   uart_sel : dmem_addr[9:2] == F4 →  0x1F40-0x1F4C
+    //   mtmr_sel : dmem_addr[9:2] == F5 →  0x1F50-0x1F5C
     // -------------------------------------------------------
     wire io_sel   = (dmem_addr[9:6] == 4'hF);
     wire drom_sel = (dmem_addr[9] == 1'b0);
     wire dram_sel = (dmem_addr[9] == 1'b1) & ~io_sel;
     wire gpio_sel = (dmem_addr[9:2] == 8'hF0);
     wire uart_sel = (dmem_addr[9:2] == 8'hF4);
+    wire mtmr_sel = (dmem_addr[9:2] == 8'hF5);
 
     wire gpio_we  = gpio_sel & |dmem_we;
     wire uart_we  = uart_sel & |dmem_we;
+    wire mtmr_we  = mtmr_sel & |dmem_we;
 
     // Register sel one cycle to align read mux with registered rdata sources
-    reg drom_sel_r, dram_sel_r, gpio_sel_r, uart_sel_r;
+    reg drom_sel_r, dram_sel_r, gpio_sel_r, uart_sel_r, mtmr_sel_r;
     always @(posedge clk_core or negedge rst_n) begin
         if (!rst_n) begin
             drom_sel_r <= 1'b0;
             dram_sel_r <= 1'b0;
             gpio_sel_r <= 1'b0;
             uart_sel_r <= 1'b0;
+            mtmr_sel_r <= 1'b0;
         end else begin
             drom_sel_r <= drom_sel;
             dram_sel_r <= dram_sel;
             gpio_sel_r <= gpio_sel;
             uart_sel_r <= uart_sel;
+            mtmr_sel_r <= mtmr_sel;
         end
     end
 
@@ -214,11 +225,28 @@ module top (
     );
 
     // -------------------------------------------------------
+    // Machine timer (mtime / mtimecmp → timer_irq / MTIP)
+    // -------------------------------------------------------
+    wire [31:0] mtmr_rdata;
+
+    mtimer mtimer0 (
+        .clk       (clk_core),
+        .rst_n     (rst_n),
+        .sel       (mtmr_sel),
+        .addr      (dmem_addr[1:0]),
+        .wdata     (dmem_wdata),
+        .we        (mtmr_we),
+        .rdata     (mtmr_rdata),
+        .timer_irq (timer_irq)
+    );
+
+    // -------------------------------------------------------
     // Data read mux — all sources have 1-cycle registered latency
     // -------------------------------------------------------
     assign dmem_rdata_mux =
         gpio_sel_r ? gpio_rdata :
         uart_sel_r ? uart_rdata :
+        mtmr_sel_r ? mtmr_rdata :
         drom_sel_r ? drom_rdata :
                      dram_rdata;
 

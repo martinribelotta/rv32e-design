@@ -33,6 +33,7 @@ RTL_SRCS := rtl/rv32e_pkg.v \
             rtl/rv32e_core.v \
             rtl/gpio.v \
             rtl/uart.v \
+            rtl/mtimer.v \
             rtl/top.v
 
 # Simulation sources (top.v excluded: contains SB_PLL40_CORE FPGA primitive)

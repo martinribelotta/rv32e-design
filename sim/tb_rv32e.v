@@ -24,6 +24,7 @@ module tb_rv32e;
         .clk        (clk),
         .rst_n      (rst_n),
         .irq        (irq),
+        .timer_irq  (1'b0),
         .imem_addr  (imem_addr),
         .imem_rdata (imem_rdata),
         .dmem_addr  (dmem_addr),
