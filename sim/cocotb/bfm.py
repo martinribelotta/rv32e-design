@@ -58,6 +58,7 @@ class CpuBFM:
     def start(self, irq_cycle=20):
         """Launch all BFM coroutines.  Call once after connect()."""
         dut = self.dut
+        dut.timer_irq.value = 0          # no machine-timer source in core-level tests
         cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
         self._tasks = [
             cocotb.start_soon(self._serve_imem()),

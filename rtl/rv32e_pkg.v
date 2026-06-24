@@ -34,6 +34,7 @@
 `define CSR_MTVEC   12'h305
 `define CSR_MEPC    12'h341
 `define CSR_MCAUSE  12'h342
+`define CSR_MIP     12'h344
 `define CSR_MCYCLE  12'hB00
 `define CSR_MCYCLEH 12'hB80
 

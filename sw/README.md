@@ -17,6 +17,7 @@ sw/
     blink/         rotate a lit LED across the 8 GPIO outputs
     hello_uart/    print "Hello from RV32E!" over UART (exercises .rodata)
     echo/          echo UART input back to the sender
+    timer_blink/   blink an LED from a machine-timer (MTIP) interrupt
     template/      empty starting point for a new app
   link.ld          legacy linker script for the assembly tests (tests/*.S) — do not remove
   start.S          legacy assembly program used by the iverilog smoke-test (`make sim`)
@@ -32,11 +33,27 @@ so all constants and variables live on the data bus:
 | IMEM   | `0x0000–0x0FFF` | `.text` (≤ 4 KB)                        | icebram |
 | DROM   | `0x1000–0x17FF` | `.rodata` + `.data` load image (≤ 2 KB) | icebram |
 | DRAM   | `0x1800–0x1EFF` | `.data` (runtime) + `.bss` + stack (≤ ~1.75 KB) | zero-init |
-| I/O    | `0x1F00–0x1FFF` | GPIO / UART (see `soc.h`)               | —       |
+| I/O    | `0x1F00–0x1FFF` | GPIO / UART / mtimer (see `soc.h`)      | —       |
 
 `.data` initial values are stored in the read-only DROM and copied to DRAM by `crt0`
 at boot; `.bss` is zeroed by `crt0`. Both DROM and IMEM are random-seeded at synthesis
 so `icebram` can locate and replace them; DRAM is plain zero-initialised RAM.
+
+## Timing & the machine timer (mtimer)
+
+A CLINT-style machine timer is mapped at `0x1F50` (see [common/soc.h](common/soc.h)):
+a free-running 64-bit `mtime` (one tick per 40 MHz clk) and a 64-bit `mtimecmp`. When
+`mtime >= mtimecmp` the core takes a **machine timer interrupt** (MTIP, `mcause`
+`0x80000007`, enabled by `mie.MTIE` bit 7 + `mstatus.MIE`).
+
+- **Precise delays / timestamps:** `mtime_now()`, `delay_us()`, `delay_ms()` use `mtime`
+  instead of a guessed busy-wait loop.
+- **Periodic interrupts:** set `mtimecmp`, install a handler in `mtvec`, enable `mie.MTIE`.
+  Re-arm in the ISR relative to the previous deadline (`mtimecmp += INTERVAL`) so the grid
+  does not drift — see [apps/timer_blink/main.c](apps/timer_blink/main.c). The actual
+  period is `INTERVAL` plus a fixed interrupt-entry/handler overhead (~120 clk: the
+  comparator only advances once the ISR runs); the overhead is constant, so the rate is
+  stable. `make test-top APP=timer_blink` checks the timer fires at a stable rate.
 
 ## Build & flash
 
