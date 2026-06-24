@@ -10,7 +10,8 @@ module rv32e_core #(
 ) (
     input  wire        clk,
     input  wire        rst_n,
-    input  wire        irq,
+    input  wire        irq,        // machine external interrupt (MEIP, cause 11)
+    input  wire        timer_irq,  // machine timer interrupt    (MTIP, cause 7)
     // Instruction memory interface
     output wire [$clog2(IMEM_DEPTH)-1:0] imem_addr,
     input  wire [31:0] imem_rdata,
@@ -43,6 +44,7 @@ module rv32e_core #(
     reg [31:0] csr_mcause;
     reg [63:0] csr_mcycle;
     reg        irq_sync0, irq_sync1;
+    reg        timer_sync0, timer_sync1;
 
     wire [31:0] pc_next = take_mret ? csr_mepc :
                            take_trap ? csr_mtvec :
@@ -228,16 +230,21 @@ module rv32e_core #(
                                       (if_id_pc + dec_imm);
 
     // Interrupt and exception handling
+    // Two machine interrupt sources, each gated by its mie bit and the global
+    // mstatus.MIE. Priority follows RISC-V: external (MEI, 11) before timer (MTI, 7).
+    wire        ext_irq_pending = irq_sync1   && csr_mie[11];
+    wire        tmr_irq_pending = timer_sync1 && csr_mie[7];
     wire        irq_pending;
     wire [31:0] trap_cause;
-    assign irq_pending = irq_sync1 && csr_mstatus[3] && csr_mie[11];
+    assign irq_pending = csr_mstatus[3] && (ext_irq_pending || tmr_irq_pending);
     assign take_trap = (dec_ecall || dec_ebreak || irq_pending) && !stall && !dec_mret;
     assign take_mret = dec_mret && !stall;
     assign take_control_flow = take_branch || take_trap || take_mret;
 
     assign trap_cause = dec_ebreak ? 32'd3 :
                         dec_ecall ? 32'd11 :
-                        32'h8000000B;
+                        ext_irq_pending ? 32'h8000000B :  // machine external (cause 11)
+                                          32'h80000007;   // machine timer    (cause 7)
 
     // JAL/JALR write PC+4 to rd
     wire [31:0] id_ex_result = dec_csr ? csr_old_value :
@@ -322,6 +329,7 @@ module rv32e_core #(
         (dec_csr_addr == `CSR_MTVEC)   ? csr_mtvec :
         (dec_csr_addr == `CSR_MEPC)    ? csr_mepc :
         (dec_csr_addr == `CSR_MCAUSE)  ? csr_mcause :
+        (dec_csr_addr == `CSR_MIP)     ? {20'd0, irq_sync1, 3'd0, timer_sync1, 7'd0} :
         (dec_csr_addr == `CSR_MCYCLE)  ? csr_mcycle[31:0] :
         (dec_csr_addr == `CSR_MCYCLEH) ? csr_mcycle[63:32] :
                                         32'd0;
@@ -331,11 +339,15 @@ module rv32e_core #(
     // IRQ synchronizer
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            irq_sync0 <= 1'b0;
-            irq_sync1 <= 1'b0;
+            irq_sync0   <= 1'b0;
+            irq_sync1   <= 1'b0;
+            timer_sync0 <= 1'b0;
+            timer_sync1 <= 1'b0;
         end else begin
-            irq_sync0 <= irq;
-            irq_sync1 <= irq_sync0;
+            irq_sync0   <= irq;
+            irq_sync1   <= irq_sync0;
+            timer_sync0 <= timer_irq;
+            timer_sync1 <= timer_sync0;
         end
     end
 

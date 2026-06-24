@@ -20,6 +20,7 @@ VERILOG_SOURCES = \
     $(ROOT)/rtl/rv32e_core.v \
     $(ROOT)/rtl/gpio.v \
     $(ROOT)/rtl/uart.v \
+    $(ROOT)/rtl/mtimer.v \
     $(ROOT)/rtl/top.v
 
 TOPLEVEL            = top
