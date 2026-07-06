@@ -29,6 +29,7 @@ module rv32e_core #(
     reg [31:0] fetch_pc;    // PC of the instruction currently in IMEM (one cycle behind pc)
     reg [31:0] if_id_pc;
     reg [31:0] if_id_instr;
+    reg        if_id_valid;  // 0 when if_id holds a flush bubble (not a real instruction)
 
     wire        take_branch;
     wire        take_trap;
@@ -69,6 +70,7 @@ module rv32e_core #(
             fetch_pc      <= 32'd0;
             if_id_pc      <= 32'd0;
             if_id_instr   <= 32'h00000013;
+            if_id_valid   <= 1'b0;
             flush_pending <= 1'b0;
         end else if (!stall) begin
             pc            <= pc_next;
@@ -76,6 +78,7 @@ module rv32e_core #(
             flush_pending <= take_control_flow;
             if_id_pc      <= (take_control_flow || flush_pending) ? 32'd0 : fetch_pc;
             if_id_instr   <= (take_control_flow || flush_pending) ? 32'h00000013 : imem_rdata;
+            if_id_valid   <= !(take_control_flow || flush_pending);
         end
     end
 
@@ -237,7 +240,9 @@ module rv32e_core #(
     wire        irq_pending;
     wire [31:0] trap_cause;
     assign irq_pending = csr_mstatus[3] && (ext_irq_pending || tmr_irq_pending);
-    assign take_trap = (dec_ecall || dec_ebreak || irq_pending) && !stall && !dec_mret;
+    // Only trap on a real instruction: never on a flush bubble (if_id_valid=0),
+    // otherwise mepc would capture the bubble's PC (0) and mret would return there.
+    assign take_trap = (dec_ecall || dec_ebreak || irq_pending) && !stall && !dec_mret && if_id_valid;
     assign take_mret = dec_mret && !stall;
     assign take_control_flow = take_branch || take_trap || take_mret;
 

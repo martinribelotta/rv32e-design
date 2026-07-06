@@ -49,11 +49,12 @@ a free-running 64-bit `mtime` (one tick per 40 MHz clk) and a 64-bit `mtimecmp`.
 - **Precise delays / timestamps:** `mtime_now()`, `delay_us()`, `delay_ms()` use `mtime`
   instead of a guessed busy-wait loop.
 - **Periodic interrupts:** set `mtimecmp`, install a handler in `mtvec`, enable `mie.MTIE`.
-  Re-arm in the ISR relative to the previous deadline (`mtimecmp += INTERVAL`) so the grid
-  does not drift — see [apps/timer_blink/main.c](apps/timer_blink/main.c). The actual
-  period is `INTERVAL` plus a fixed interrupt-entry/handler overhead (~120 clk: the
-  comparator only advances once the ISR runs); the overhead is constant, so the rate is
-  stable. `make test-top APP=timer_blink` checks the timer fires at a stable rate.
+  Re-arm in the ISR relative to the deadline that fired (`mtimecmp += INTERVAL`, i.e.
+  `mtimer_set_cmp(mtimer_get_cmp() + INTERVAL)`) so the grid is **exact and drift-free** —
+  the period is exactly `INTERVAL` regardless of interrupt-entry latency. Re-arming with
+  `mtime_now() + INTERVAL` instead would drift by that latency. See
+  [apps/timer_blink/main.c](apps/timer_blink/main.c); `make test-top APP=timer_blink`
+  asserts the interrupt period is exactly `INTERVAL` with zero accumulated drift.
 
 ## Build & flash
 

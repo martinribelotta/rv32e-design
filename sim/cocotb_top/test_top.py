@@ -15,7 +15,7 @@ import os
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import FallingEdge, Edge, ClockCycles, with_timeout
+from cocotb.triggers import FallingEdge, RisingEdge, ClockCycles, with_timeout
 from cocotb.utils import get_sim_time
 
 APP = os.environ.get("APP", "hello_uart")
@@ -74,27 +74,25 @@ async def test_timer_blink(dut):
     dut.buttons.value = 0
     cocotb.start_soon(Clock(dut.clk, CLK_NS, units="ns").start())
 
-    # Let reset release (~2048 cyc) and main() arm the timer; leds is stable 0.
-    await ClockCycles(dut.clk, 3000)
-
-    # Measure the period between consecutive LED0 toggles (each timer interrupt).
-    await with_timeout(Edge(dut.leds), 3, "ms")        # first toggle
-    t_prev = get_sim_time("ns")
+    # Measure the real interrupt grid at the mtimer's timer_irq rising edges
+    # (one per deadline). The example re-arms with mtimecmp += INTERVAL, so the
+    # grid must be exact: every period equals INTERVAL and error never accumulates.
+    await with_timeout(RisingEdge(dut.mtimer0.timer_irq), 3, "ms")
+    t0 = get_sim_time("ns")
+    prev = t0
     periods = []
-    for _ in range(4):
-        await with_timeout(Edge(dut.leds), 3, "ms")
+    for k in range(1, 6):
+        await with_timeout(RisingEdge(dut.mtimer0.timer_irq), 3, "ms")
         t = get_sim_time("ns")
-        periods.append(round((t - t_prev) / CLK_NS))   # ns → clk cycles
-        t_prev = t
+        periods.append(round((t - prev) / CLK_NS))
+        prev = t
+    cumulative_drift = round((prev - t0) / CLK_NS) - len(periods) * TIMER_INTERVAL
 
-    overhead = periods[0] - TIMER_INTERVAL
     dut._log.info(
-        f"timer_blink LED0 periods {periods} cyc "
-        f"= INTERVAL({TIMER_INTERVAL}) + {overhead} cyc handler overhead"
+        f"timer_blink interrupt periods {periods} cyc, "
+        f"cumulative drift after {len(periods)} periods = {cumulative_drift}"
     )
-    # The interrupt grid must be stable (constant period → no drift) ...
-    assert max(periods) - min(periods) <= 1, f"timer period not stable: {periods}"
-    # ... at INTERVAL plus a small, fixed interrupt-entry/handler overhead.
-    assert 0 <= overhead <= 256, (
-        f"timer period {periods[0]} cyc out of range for interval {TIMER_INTERVAL}"
+    assert all(p == TIMER_INTERVAL for p in periods), (
+        f"period != INTERVAL ({TIMER_INTERVAL}): {periods}"
     )
+    assert cumulative_drift == 0, f"timer drifts: {cumulative_drift} cyc accumulated"
