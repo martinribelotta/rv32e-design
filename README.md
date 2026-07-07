@@ -4,6 +4,10 @@ A minimal RV32E soft-core processor targeting the iCE40HX4K (LQFP144) FPGA,
 verified with a cocotb/pyuvm test environment and deployable via icebram
 fast-firmware-update (no re-synthesis needed after the first build).
 
+📖 In-depth design docs live in **[docs/](docs/)** — architecture & design
+decisions, the ISA test suite, the cocotb simulation setup, and the firmware
+build/flash workflow.
+
 ## Processor features
 
 - **Architecture**: RV32E (32-bit, 16 general-purpose registers x0–x15)
@@ -211,6 +215,16 @@ runs it on the full `top.v` (PLL bypassed via `-DSIM_NO_PLL`), decoding the
 `uart_tx` stream. `make test-top APP=hello_uart` checks the board actually
 emits `Hello from RV32E!`; `make test-top APP=timer_blink` asserts the
 machine-timer interrupt fires with an exact, drift-free period.
+
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [docs/architecture.md](docs/architecture.md) | Block diagram, the 3-stage pipeline, design decisions, current status, and known limitations. |
+| [docs/isa-tests.md](docs/isa-tests.md) | The self-checking RV32E ISA suite and how to run it. |
+| [docs/simulation.md](docs/simulation.md) | The two cocotb environments (core-level pyuvm + top-level integration). |
+| [docs/firmware-workflow.md](docs/firmware-workflow.md) | Memory map, C runtime, and the icebram build/flash loop. |
+| [sw/README.md](sw/README.md) | App-writer's guide for the C firmware. |
 
 ## License
 

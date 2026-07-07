@@ -60,10 +60,10 @@ module top (
     );
 `endif
 
-    // Reset counter: holds rst_n low for 4096 cycles after PLL locks.
+    // Reset counter: holds rst_n low for 2048 cycles after PLL locks.
     // pll_lock async-clears the counter so any PLL glitch re-triggers reset.
     reg [11:0] rst_cnt;
-    wire rst_n = rst_cnt[11];   // released when MSB reaches 1 (~102 µs @ 40 MHz)
+    wire rst_n = rst_cnt[11];   // released when MSB reaches 1 (2048 cyc, ~51 µs @ 40 MHz)
 
     always @(posedge clk_core or negedge pll_lock)
         if (!pll_lock)  rst_cnt <= 12'd0;
