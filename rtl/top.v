@@ -96,29 +96,20 @@ module top (
         .dmem_rdata (dmem_rdata_mux)
     );
 
-    // -------------------------------------------------------
-    // Instruction ROM (seed → replaced by 'make fw' via icebram)
-    // -------------------------------------------------------
-    imem_rom #(
-        .DEPTH    (IMEM_DEPTH),
-        .INIT_FILE("imem_seed.hex")
-    ) imem (
-        .clk   (clk_core),
-        .addr  (imem_addr),
-        .rdata (imem_rdata)
-    );
+    // Instruction fetch and data memory are provided by a single unified 2R1W
+    // block (mem_2r1w) instantiated below, after the data-space address decode.
 
     // -------------------------------------------------------
     // Data address decode
-    //   drom_sel : dmem_addr[9] == 0    →  0x1000-0x17FF  init ROM (read-only)
     //   dram_sel : dmem_addr[9] == 1    →  0x1800-0x1FFF  RAM (minus I/O)
     //   io_sel   : dmem_addr[9:6] == F  →  0x1F00-0x1FFF  peripherals
     //   gpio_sel : dmem_addr[9:2] == F0 →  0x1F00-0x1F0C
     //   uart_sel : dmem_addr[9:2] == F4 →  0x1F40-0x1F4C
     //   mtmr_sel : dmem_addr[9:2] == F5 →  0x1F50-0x1F5C
+    // The ROM/RAM split (DROM @0x1000 vs DRAM @0x1800) lives inside mem_2r1w;
+    // top only needs dram_sel here to gate writes to the writable region.
     // -------------------------------------------------------
     wire io_sel   = (dmem_addr[9:6] == 4'hF);
-    wire drom_sel = (dmem_addr[9] == 1'b0);
     wire dram_sel = (dmem_addr[9] == 1'b1) & ~io_sel;
     wire gpio_sel = (dmem_addr[9:2] == 8'hF0);
     wire uart_sel = (dmem_addr[9:2] == 8'hF4);
@@ -128,18 +119,15 @@ module top (
     wire uart_we  = uart_sel & |dmem_we;
     wire mtmr_we  = mtmr_sel & |dmem_we;
 
-    // Register sel one cycle to align read mux with registered rdata sources
-    reg drom_sel_r, dram_sel_r, gpio_sel_r, uart_sel_r, mtmr_sel_r;
+    // Register peripheral sels one cycle to align read mux with registered rdata.
+    // (DROM/DRAM selection is registered inside mem_2r1w.)
+    reg gpio_sel_r, uart_sel_r, mtmr_sel_r;
     always @(posedge clk_core or negedge rst_n) begin
         if (!rst_n) begin
-            drom_sel_r <= 1'b0;
-            dram_sel_r <= 1'b0;
             gpio_sel_r <= 1'b0;
             uart_sel_r <= 1'b0;
             mtmr_sel_r <= 1'b0;
         end else begin
-            drom_sel_r <= drom_sel;
-            dram_sel_r <= dram_sel;
             gpio_sel_r <= gpio_sel;
             uart_sel_r <= uart_sel;
             mtmr_sel_r <= mtmr_sel;
@@ -147,37 +135,30 @@ module top (
     end
 
     // -------------------------------------------------------
-    // DROM — read-only init ROM (.rodata + .data load image).
-    // Seeded with drom_seed.hex so 'make fw' can patch it via icebram
-    // (same single-port flow as IMEM); the CPU never writes here.
-    // -------------------------------------------------------
-    wire [31:0] drom_rdata;
-    imem_rom #(
-        .DEPTH    (DROM_DEPTH),
-        .INIT_FILE("drom_seed.hex")
-    ) drom (
-        .clk   (clk_core),
-        .addr  (dmem_addr[$clog2(DROM_DEPTH)-1:0]),
-        .rdata (drom_rdata)
-    );
-
-    // -------------------------------------------------------
-    // DRAM — writable data RAM (.data runtime, .bss, stack).
-    // Zero-initialised, never icebram-patched. Writes only when dram_sel.
+    // Unified instruction + data memory — 2 read ports + 1 write port.
+    //   Read 0 → instruction fetch (icebram ROM, seed imem_seed.hex)
+    //   Read 1 → data: DROM init ROM @0x1000 (icebram) + DRAM RAM @0x1800
+    //   Write  → data, DRAM region only (byte enables), gated by dram_sel.
+    // 'make fw' patches both IMEM (.text) and DROM (.rodata/.data) via icebram.
     // -------------------------------------------------------
     wire [3:0]  dram_we = dram_sel ? dmem_we : 4'b0;
-    wire [31:0] dram_rdata;
-    bram_dp #(
-        .DEPTH    (DRAM_DEPTH),
-        .INIT_FILE("")
-    ) dram (
+    wire [31:0] mem_rdata;
+
+    mem_2r1w #(
+        .IMEM_DEPTH (IMEM_DEPTH),
+        .DROM_DEPTH (DROM_DEPTH),
+        .DRAM_DEPTH (DRAM_DEPTH),
+        .IMEM_INIT  ("imem_seed.hex"),
+        .DROM_INIT  ("drom_seed.hex")
+    ) mem (
         .clk     (clk_core),
-        .a_addr  ({$clog2(DRAM_DEPTH){1'b0}}),
-        .a_rdata (),
-        .b_addr  (dmem_addr[$clog2(DRAM_DEPTH)-1:0]),
-        .b_wdata (dmem_wdata),
-        .b_we    (dram_we),
-        .b_rdata (dram_rdata)
+        .rst_n   (rst_n),
+        .i_addr  (imem_addr),
+        .i_rdata (imem_rdata),
+        .d_addr  (dmem_addr),
+        .d_wdata (dmem_wdata),
+        .d_we    (dram_we),
+        .d_rdata (mem_rdata)
     );
 
     // -------------------------------------------------------
@@ -241,13 +222,14 @@ module top (
     );
 
     // -------------------------------------------------------
-    // Data read mux — all sources have 1-cycle registered latency
+    // Data read mux — all sources have 1-cycle registered latency.
+    // mem_rdata already muxes DROM vs DRAM inside mem_2r1w, so it is the default
+    // (non-peripheral) source here.
     // -------------------------------------------------------
     assign dmem_rdata_mux =
         gpio_sel_r ? gpio_rdata :
         uart_sel_r ? uart_rdata :
         mtmr_sel_r ? mtmr_rdata :
-        drom_sel_r ? drom_rdata :
-                     dram_rdata;
+                     mem_rdata;
 
 endmodule

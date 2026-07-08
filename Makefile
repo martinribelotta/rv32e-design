@@ -27,6 +27,7 @@ PNR_FLAGS := --hx4k --package tq144 \
 RTL_SRCS := rtl/rv32e_pkg.v \
             rtl/bram_dp.v \
             rtl/imem_rom.v \
+            rtl/mem_2r1w.v \
             rtl/alu.v \
             rtl/regfile.v \
             rtl/decoder.v \

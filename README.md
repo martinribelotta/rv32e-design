@@ -30,6 +30,10 @@ build/flash workflow.
 
 Harvard architecture: instructions live in IMEM and are **not** readable by
 load instructions; all constants and variables live on the separate data bus.
+All three banks are packaged in one **2R1W** memory block, `mem_2r1w`
+(read port 0 = instructions, read port 1 = data, write port = data-only); on
+iCE40 each read port gets its own bank, which keeps the instruction bank
+write-free and therefore icebram-patchable.
 
 | Region | Byte addresses | Size | Contents | Reflash |
 |--------|---------------|------|----------|---------|
@@ -77,6 +81,7 @@ rv32i-base/
 │   ├── rv32e_pkg.v      # opcodes, ALU/CSR/branch constants
 │   ├── bram_dp.v        # inferred dual-port BRAM primitive
 │   ├── imem_rom.v       # single-port ROM wrapper (icebram-patchable)
+│   ├── mem_2r1w.v       # unified 2R1W memory: instr read + data read/write
 │   ├── alu.v
 │   ├── regfile.v        # 16-entry RV32E register file (sync read)
 │   ├── decoder.v
@@ -84,7 +89,7 @@ rv32i-base/
 │   ├── gpio.v           # 8-bit GPIO peripheral
 │   ├── uart.v           # 8N1 UART peripheral
 │   ├── mtimer.v         # CLINT-style machine timer (mtime/mtimecmp → MTIP)
-│   └── top.v            # top level: PLL, IMEM/DROM/DRAM, peripheral bus
+│   └── top.v            # top level: PLL, mem_2r1w (IMEM/DROM/DRAM), peripheral bus
 ├── sw/                  # C + assembly firmware — see sw/README.md
 │   ├── common/          # crt0.S, firmware.ld, soc.c/.h shared runtime
 │   ├── apps/            # blink, hello_uart, echo, timer_blink, template

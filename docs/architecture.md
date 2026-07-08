@@ -19,13 +19,13 @@ cocotb/pyuvm.
         │   fetch      +ALU+branch+CSR  writeback, CSR/trap commit       │
         └───────┬───────────────────────────────┬───────────────────────┘
       imem_addr │ imem_rdata          dmem_addr, │ dmem_rdata
-                ▼                     wdata, we   ▼
-        ┌──────────────┐        ┌───────────── data bus decode ─────────────┐
-        │  imem_rom    │        │ drom (imem_rom)  0x1000-0x17FF  R/O init   │
-        │  IMEM 4 KB   │        │ dram (bram_dp)   0x1800-0x1EFF  R/W RAM    │
-        │  (seeded)    │        │ gpio   0x1F00 · uart 0x1F40 · mtimer 0x1F50│
-        └──────────────┘        └───────────────────────────────────────────┘
-                                     │ leds/buttons   │ uart_tx/rx   │ timer_irq
+       (read 0) ▼                     wdata, we   ▼ (read 1 / write)
+        ┌─────────────────── mem_2r1w (2R1W) ───────────────┐  ┌── periph ──┐
+        │  imem_rom  IMEM 4 KB    0x0000-0x0FFF  instr R/O   │  │ gpio 0x1F00│
+        │  drom (imem_rom)        0x1000-0x17FF  data  R/O   │  │ uart 0x1F40│
+        │  dram (bram_dp)         0x1800-0x1EFF  data  R/W   │  │ mtmr 0x1F50│
+        └───────────────────────────────────────────────────┘  └────────────┘
+                                                    │ leds/buttons · uart · irq
 ```
 
 Sources: [top.v](../rtl/top.v), [rv32e_core.v](../rtl/rv32e_core.v).
@@ -98,12 +98,22 @@ bubbles, so a timer interrupt hit the window almost every time. The
 `if_id_valid` gate guarantees `mepc` is always a valid instruction PC.
 See `take_trap` and the trap-commit block in [rv32e_core.v](../rtl/rv32e_core.v).
 
-### 6. Harvard split, and *why the data side is split again* (DROM + DRAM)
+### 6. Unified `mem_2r1w` block, and *why the data side is split again* (DROM + DRAM)
+Instruction fetch and data access are packaged in a **single memory block**,
+[mem_2r1w.v](../rtl/mem_2r1w.v), with a clean **2-read / 1-write** interface:
+read port 0 serves instruction fetch, read port 1 serves data reads, and the
+lone write port is data-only (byte enables). On iCE40 an `SB_RAM40_4K` tile is
+physically **1R + 1W**, so a true 2R1W is built by giving each read port its own
+bank rather than one shared array — the module is a thin structural wrapper over
+the proven `imem_rom` (ROM) and `bram_dp` (RAM) primitives, so its BRAM mapping
+and icebram behaviour are unchanged (still 20/32 tiles). The instruction bank is
+**write-free**, which is what keeps it icebram-patchable (a byte-writable bank
+would map to asymmetric tiles; see §7).
+
 Loads cannot read IMEM (the data path ignores address bit 12), so all constants
-and variables must live on the data bus. But the data RAM must be
-**byte-writable** for `SB`/`SH`, and yosys maps a byte-enabled RAM onto
-asymmetric BRAM tiles that **`icebram` cannot patch**. To keep fast reflashing
-for initialised data, the 4 KB data window is split:
+and variables must live on the data bus. That data bus is itself split — because
+a byte-writable RAM maps to asymmetric tiles that **`icebram` cannot patch** — so
+the 4 KB data window inside `mem_2r1w` has two banks:
 
 - **DROM** `0x1000–0x17FF` — a read-only init ROM built from the *same*
   single-port `imem_rom` primitive as IMEM, so it is icebram-patchable. Holds
@@ -111,6 +121,8 @@ for initialised data, the 4 KB data window is split:
 - **DRAM** `0x1800–0x1EFF` — a plain byte-writable `bram_dp`, zero-initialised,
   never patched. Holds runtime `.data`, `.bss` and the stack.
 
+The DROM/DRAM read mux (bit 9, registered one cycle) lives inside `mem_2r1w`;
+`top.v` only keeps the peripheral decode and gates writes to the DRAM region.
 `crt0` copies `.data` from DROM to DRAM and zeroes `.bss` at boot. See
 [firmware-workflow.md](firmware-workflow.md) and [top.v](../rtl/top.v).
 
@@ -154,11 +166,13 @@ latency — verified by the top-level `timer_blink` test (periods `50000×5`,
 cumulative drift 0).
 
 ### 10. Registered peripheral bus
-Every data source — DROM, DRAM, GPIO, UART, mtimer — has a **1-cycle registered
-read**, matching the BRAM latency the core's MEM/WB stage expects. The select
-lines are registered one cycle (`*_sel_r`) so the read mux lines up with the
-registered `rdata`. Address decode is a flat compare on `dmem_addr` bits (see
-the decode comment block in [top.v](../rtl/top.v)).
+Every data source — the `mem_2r1w` data port (DROM/DRAM), GPIO, UART, mtimer —
+has a **1-cycle registered read**, matching the BRAM latency the core's MEM/WB
+stage expects. The select lines are registered one cycle (`*_sel_r`) so the read
+mux lines up with the registered `rdata`; the DROM-vs-DRAM select is registered
+*inside* `mem_2r1w`, so `top.v` treats the block's `mem_rdata` as the default
+(non-peripheral) source. Address decode is a flat compare on `dmem_addr` bits
+(see the decode comment block in [top.v](../rtl/top.v)).
 
 ### 11. Clocking, reset, and a synthesis knob
 The PLL turns the 50 MHz oscillator into 40 MHz (`DIVR=4, DIVF=63, DIVQ=4`). A

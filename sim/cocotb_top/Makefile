@@ -14,6 +14,7 @@ VERILOG_SOURCES = \
     $(ROOT)/rtl/rv32e_pkg.v \
     $(ROOT)/rtl/bram_dp.v \
     $(ROOT)/rtl/imem_rom.v \
+    $(ROOT)/rtl/mem_2r1w.v \
     $(ROOT)/rtl/alu.v \
     $(ROOT)/rtl/regfile.v \
     $(ROOT)/rtl/decoder.v \
