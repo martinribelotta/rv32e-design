@@ -1,5 +1,5 @@
-# Makefile para simular RV32E
-# Soporta: QuestaSim (recomendado), Icarus Verilog
+# Makefile for RV32E simulation
+# Supports: QuestaSim (recommended), Icarus Verilog
 
 SIMULATOR ?= questa
 
@@ -48,7 +48,7 @@ TB_SRCS = tb_rv32e.v
 FIRMWARE_SRC = ../tests/$(TEST).S
 
 # ============================================================================
-# Configuración por simulador
+# Simulator-specific configuration
 # ============================================================================
 ifeq ($(SIMULATOR),questa)
   SIM_CMD = vsim
@@ -70,14 +70,14 @@ ifeq ($(SIMULATOR),iverilog)
 endif
 
 # ============================================================================
-# Objetivos
+# Targets
 # ============================================================================
 .PHONY: all clean compile run coverage waves help test-smoke test-alu test-regression
 
 all: compile run
 
 compile:
-	@echo "=== Compilando con $(SIMULATOR) ==="
+	@echo "=== Compiling with $(SIMULATOR) ==="
 	mkdir -p $(BUILD_DIR)
 ifeq ($(SIMULATOR),questa)
 	$(SIM_CMD) -c $(COMPILE_OPTS) $(COVERAGE) $(COV_OPTS) \
@@ -89,7 +89,7 @@ ifeq ($(SIMULATOR),iverilog)
 endif
 
 run: compile
-	@echo "=== Ejecutando $(UVM_TEST) ==="
+	@echo "=== Running $(UVM_TEST) ==="
 ifeq ($(SIMULATOR),questa)
 	$(SIM_CMD) $(RUN_OPTS) $(COVERAGE) $(COV_OPTS) $(WAVES) \
 		$(BUILD_DIR)/sim +UVM_TEST=$(UVM_TEST)
@@ -99,13 +99,13 @@ ifeq ($(SIMULATOR),iverilog)
 endif
 
 coverage: compile
-	@echo "=== Generando coverage ==="
+	@echo "=== Generating coverage ==="
 ifeq ($(SIMULATOR),questa)
 	cover -report $(BUILD_DIR)/coverage.html $(BUILD_DIR)/coverage.ucdb
 endif
 
 waves: compile
-	@echo "=== Generando waveform ==="
+	@echo "=== Generating waveform ==="
 ifeq ($(SIMULATOR),questa)
 	$(SIM_CMD) -c -do "view wave; run -all" $(WAVES) $(BUILD_DIR)/sim
 endif
@@ -134,7 +134,7 @@ test-random:
 
 # Test clásico (sin UVM)
 test-classic:
-	@echo "=== Ejecutando test clásico: $(TEST) ==="
+	@echo "=== Running classic test: $(TEST) ==="
 	riscv-none-elf-gcc -march=rv32e_zicsr -mabi=ilp32e \
 		-nostdlib -nostartfiles \
 		-I../tests -T../sw/link.ld \
@@ -145,28 +145,28 @@ test-classic:
 
 help:
 	@echo "=== RV32E Simulation ==="
-	@echo "Usa: make [comando] SIMULATOR=<sim> TEST=<test>"
+	@echo "Usage: make [target] SIMULATOR=<sim> TEST=<test>"
 	@echo ""
-	@echo "Comandos:"
-	@echo "  all              Compilar y ejecutar (default)"
-	@echo "  compile          Compilar"
-	@echo "  run              Ejecutar (default: rv32e_smoke_test)"
-	@echo "  coverage         Generar reporte de coverage"
-	@echo "  waves            Generar waveform"
-	@echo "  clean            Limpiar"
+	@echo "Commands:"
+	@echo "  all              Compile and run (default)"
+	@echo "  compile          Compile"
+	@echo "  run              Run (default: rv32e_smoke_test)"
+	@echo "  coverage         Generate coverage report"
+	@echo "  waves            Generate waveform"
+	@echo "  clean            Clean build artifacts"
 	@echo ""
-	@echo "Tests UVM:"
-	@echo "  test-smoke       Ejecutar smoke test"
-	@echo "  test-alu         Ejecutar ALU test"
-	@echo "  test-load        Ejecutar load/store test"
-	@echo "  test-branch      Ejecutar branch test"
-	@echo "  test-csr         Ejecutar CSR test"
+	@echo "UVM Tests:"
+	@echo "  test-smoke       Run smoke test"
+	@echo "  test-alu         Run ALU test"
+	@echo "  test-load        Run load/store test"
+	@echo "  test-branch      Run branch test"
+	@echo "  test-csr         Run CSR test"
 	@echo ""
-	@echo "Tests clásicos (sin UVM):"
-	@echo "  test-classic     Ejecutar test assembly (TEST=xxx)"
+	@echo "Classic Tests (without UVM):"
+	@echo "  test-classic     Run assembly test (TEST=xxx)"
 	@echo ""
-	@echo "Ejemplos:"
-	@echo "  make SIMULATOR=questa            # Ejecutar con Questa"
-	@echo "  make SIMULATOR=iverilog          # Ejecutar con Icarus"
-	@echo "  make test-alu                    # Ejecutar ALU test"
-	@echo "  make test-classic TEST=branch    # Ejecutar test assembly"
+	@echo "Examples:"
+	@echo "  make SIMULATOR=questa            # Run with Questa"
+	@echo "  make SIMULATOR=iverilog          # Run with Icarus"
+	@echo "  make test-alu                    # Run ALU test"
+	@echo "  make test-classic TEST=branch    # Run assembly test"

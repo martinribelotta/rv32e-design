@@ -2,49 +2,49 @@
 
 ## Quick Start
 
-### Con QuestaSim (Recomendado)
+### With QuestaSim (Recommended)
 
 ```bash
-# Configurar Questa (una vez)
+# Setup Questa (one time)
 cd sim
 source setup_quartus.sh
 
-# Ejecutar test con Questa
+# Run test with Questa
 make SIMULATOR=questa
 make SIMULATOR=questa UVM_TEST=rv32e_alu_test
 make SIMULATOR=questa UVM_TEST=rv32e_branch_test
 
-# Generar waveform
+# Generate waveform
 make SIMULATOR=questa waves
 
-# Generar coverage
+# Generate coverage
 make SIMULATOR=questa coverage
 ```
 
-### Con Icarus Verilog (Gratuito)
+### With Icarus Verilog (Free)
 
 ```bash
-# Ejecutar test clásico (sin UVM)
+# Run classic test (without UVM)
 make SIMULATOR=iverilog
 
-# Con waveform
+# With waveform
 make SIMULATOR=iverilog waves
 ```
 
 ## Tests Disponibles
 
-### Tests UVM (Completos)
+### UVM Tests (Complete)
 
-| Test | Descripción |
+| Test | Description |
 |------|-------------|
-| `rv32e_smoke_test` | Prueba básica de funcionamiento |
-| `rv32e_alu_test` | Operaciones ALU (ADD, SUB, AND, OR, XOR, etc.) |
-| `rv32e_load_store_test` | Operaciones de memoria (LB, LH, LW, SB, SH, SW) |
-| `rv32e_branch_test` | Saltos condicionales (BEQ, BNE, BLT, BGE, etc.) |
-| `rv32e_csr_test` | Registros de control y estado |
-| `rv32e_random_test` | Instrucciones aleatorias con restricciones |
-| `rv32e_stress_test` | Alta volumetría de instrucciones |
-| `rv32e_integration_test` | Test completo del sistema |
+| `rv32e_smoke_test` | Basic functionality test |
+| `rv32e_alu_test` | ALU operations (ADD, SUB, AND, OR, XOR, etc.) |
+| `rv32e_load_store_test` | Memory operations (LB, LH, LW, SB, SH, SW) |
+| `rv32e_branch_test` | Conditional branches (BEQ, BNE, BLT, BGE, etc.) |
+| `rv32e_csr_test` | Control and status registers |
+| `rv32e_random_test` | Random instructions with constraints |
+| `rv32e_stress_test` | High-volume instruction testing |
+| `rv32e_integration_test` | Complete system test |
 
 ### Tests Clásicos (Assembly)
 
@@ -55,103 +55,103 @@ make SIMULATOR=iverilog TEST=load_store
 # etc...
 ```
 
-## Arquitectura del Testbench
+## Testbench Architecture
 
 ```
 sim/
-├── Makefile                    # Script de build principal
-├── setup_quartus.sh           # Setup para QuestaSim
-├── tb_rv32e.v                 # Testbench clásico
-├── rtl/                       # Fuentes RTL
+├── Makefile                    # Main build script
+├── setup_quartus.sh           # QuestaSim setup script
+├── tb_rv32e.v                 # Classic testbench
+├── rtl/                       # RTL sources
 │   └── rv32e_core.v
-└── uvm/                       # Testbench UVM (completo)
-    ├── base/                  # Clases base
+└── uvm/                       # UVM testbench (complete)
+    ├── base/                  # Base classes
     ├── env/                   # Environment
     ├── agents/                # CPU, Memory agents
-    ├── scoreboard/            # Verificación
-    ├── predictor/             # Modelo de referencia
-    ├── sequences/             # Secuencias
-    ├── coverage/              # Cobertura funcional
+    ├── scoreboard/            # Result checking
+    ├── predictor/             # Reference model
+    ├── sequences/             # Sequences
+    ├── coverage/              # Functional coverage
     ├── ral/                   # UVM RAL model
     ├── tests/                 # 10+ test classes
     ├── assertions/            # SVA assertions
-    └── docs/                  # Documentación
+    └── docs/                  # Documentation
 ```
 
-## Uso de QuestaSim
+## QuestaSim Usage
 
-### Comandos Básicos
+### Basic Commands
 
 ```bash
-# Compilar
+# Compile
 vsim -64 -sv -debug_all rtl/*.v uvm/*.v tb_rv32e.v -o sim
 
-# Ejecutar
+# Run
 vsim sim
 run -all
 
-# Generar waveform
+# Generate waveform
 view wave
 add wave -r sim/*
 
-# Generar coverage
+# Generate coverage
 coverage save -onexit -ucdb coverage.ucdb
 ```
 
-### Comandos Útiles en Questa
+### Useful Questa Commands
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| `run -all` | Ejecutar hasta terminar |
-| `run 100ns` | Ejecutar 100 nanosegundos |
-| `view wave` | Ver waveform |
-| `coverage report` | Reporte de coverage |
-| `quit` | Salir |
+| `run -all` | Run until completion |
+| `run 100ns` | Run for 100 nanoseconds |
+| `view wave` | View waveform |
+| `coverage report` | Coverage report |
+| `quit` | Exit |
 
-## Solución de Problemas
+## Troubleshooting
 
 ### "vsim not found"
-Instala QuestaSim o usa Icarus:
+Install QuestaSim or use Icarus:
 ```bash
 make SIMULATOR=iverilog
 ```
 
 ### "UVM not found"
 ```bash
-# Configurar UVM
+# Configure UVM
 export UVM_HOME=$QUESTA_HOME/verilog_src/uvm-1.2
 ```
 
-### Errores de compilación
+### Compilation errors
 ```bash
-# Verifica que todos los paths sean correctos
+# Verify all paths are correct
 ls -la ../rtl/
 ls -la uvm/
 ```
 
-## Integration con Intel Quartus
+## Intel Quartus Integration
 
-Si usas Intel Quartus:
+If using Intel Quartus:
 
 ```bash
-# Setup Questa desde Quartus
+# Setup Questa from Quartus
 source /opt/intelFPGA/setup_quartus.sh
 
-# Compilar y simular
+# Compile and simulate
 make SIMULATOR=questa
 ```
 
-## Archivos Generados
+## Generated Files
 
-| Archivo | Descripción |
+| File | Description |
 |---------|-------------|
-| `sim/` | Executable de simulación |
-| `build/waves.vcd` | Waveform para ver con GTKWave |
-| `build/coverage.ucdb` | Database de coverage |
+| `sim/` | Simulation executable |
+| `build/waves.vcd` | Waveform for viewing with GTKWave |
+| `build/coverage.ucdb` | Coverage database |
 
-## Próximos Pasos
+## Next Steps
 
-1. [ ] Compilar firmware para los tests
-2. [ ] Correr regression suite completa
-3. [ ] Abrir waveform con GTKWave
-4. [ ] Analizar coverage report
+1. [ ] Compile firmware for tests
+2. [ ] Run full regression suite
+3. [ ] Open waveform with GTKWave
+4. [ ] Analyze coverage report
