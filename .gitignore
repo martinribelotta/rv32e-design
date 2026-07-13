@@ -6,4 +6,9 @@ sim/cocotb/results.xml
 sim/cocotb_top/results.xml
 sim/cocotb_top/imem_seed.hex
 sim/cocotb_top/drom_seed.hex
+sim/uvm/build/
+sim/uvm/*.vcd
+sim/uvm/*.ucdb
+sim/uvm/coverage/
 .claude/
+.kiro
