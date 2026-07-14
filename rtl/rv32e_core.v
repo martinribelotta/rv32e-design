@@ -12,6 +12,7 @@ module rv32e_core #(
     input  wire        rst_n,
     input  wire        irq,        // machine external interrupt (MEIP, cause 11)
     input  wire        timer_irq,  // machine timer interrupt    (MTIP, cause 7)
+    input  wire        bus_wait,   // bus arbiter stall (asserted when bus is busy)
     // Instruction memory interface
     output wire [$clog2(IMEM_DEPTH)-1:0] imem_addr,
     input  wire [31:0] imem_rdata,
@@ -146,7 +147,9 @@ module rv32e_core #(
     wire load_use_hazard = ex_mem_mem_read &&
                            ((dec_rs1 == ex_mem_rd) || (dec_rs2 == ex_mem_rd)) &&
                            (ex_mem_rd != 4'd0);
-    assign stall = load_use_hazard;
+    
+    // Overall stall: either load-use hazard or bus wait state
+    assign stall = load_use_hazard || bus_wait;
 
     // Register file
     wire [31:0] rf_rdata1, rf_rdata2;

@@ -79,6 +79,7 @@ module top (
     wire [3:0]  dmem_we;
     wire [31:0] dmem_rdata_mux;   // data read mux (driven at end of module)
     wire        timer_irq;        // machine timer interrupt (mtimer → core)
+    wire        bus_wait;         // bus arbiter stall signal
 
     rv32e_core #(
         .IMEM_DEPTH (IMEM_DEPTH),
@@ -88,6 +89,7 @@ module top (
         .rst_n      (rst_n),
         .irq        (1'd0),          // no external interrupt source
         .timer_irq  (timer_irq),     // machine timer (mtimer peripheral)
+        .bus_wait   (bus_wait),      // bus arbiter stall
         .imem_addr  (imem_addr),
         .imem_rdata (imem_rdata),
         .dmem_addr  (dmem_addr),
@@ -98,6 +100,42 @@ module top (
 
     // Instruction fetch and data memory are provided by a single unified 2R1W
     // block (mem_2r1w) instantiated below, after the data-space address decode.
+
+    // -------------------------------------------------------
+    // Bus Arbitrator and Wait State Controller
+    // -------------------------------------------------------
+    // Bus arbitration logic: prioritize DMEM over IMEM to prevent data hazards.
+    // When both ports request access simultaneously, DMEM is granted and IMEM 
+    // receives a wait signal, causing the CPU pipeline to stall for one cycle.
+    
+    wire imem_req = 1'b1;          // IMEM always requests (continuous fetch)
+    wire dmem_req = |dmem_we;      // DMEM requests on write, or data reads via memory map
+    wire imem_grant, imem_wait;
+    wire dmem_grant, dmem_wait;
+    
+    bus_arbiter arb (
+        .clk          (clk_core),
+        .rst_n        (rst_n),
+        .imem_req     (imem_req),
+        .imem_grant   (imem_grant),
+        .imem_wait    (imem_wait),
+        .dmem_req     (dmem_req),
+        .dmem_grant   (dmem_grant),
+        .dmem_wait    (dmem_wait),
+        .arb_imem_sel ()            // unused: arbitration result
+    );
+    
+    // Wait state generator: converts conflict signals to pipeline stall
+    bus_wait_ctrl #(
+        .WAIT_CYCLES (1)            // one wait cycle per conflict
+    ) wait_ctrl (
+        .clk          (clk_core),
+        .rst_n        (rst_n),
+        .imem_wait_i  (imem_wait),
+        .dmem_wait_i  (dmem_wait),
+        .cpu_wait_o   (bus_wait),
+        .wait_cnt     ()             // unused: monitor only
+    );
 
     // -------------------------------------------------------
     // Data address decode
