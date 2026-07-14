@@ -1,0 +1,36 @@
+# cocotb simulation for Bus Arbitrator + Wait State Controller
+#
+# Usage:
+#   make -f Makefile.bus_arbiter                       — run all tests
+#   make -f Makefile.bus_arbiter COCOTB_TEST_FILTER=bus_stress_test  — single test
+
+SIM           ?= icarus
+TOPLEVEL_LANG  = verilog
+ROOT          := $(abspath ../..)
+
+VERILOG_SOURCES = \
+    $(ROOT)/rtl/rv32e_pkg.v \
+    $(ROOT)/rtl/bram_dp.v \
+    $(ROOT)/rtl/alu.v \
+    $(ROOT)/rtl/regfile.v \
+    $(ROOT)/rtl/decoder.v \
+    $(ROOT)/rtl/rv32e_core.v \
+    $(ROOT)/rtl/bus_arbiter.v \
+    $(ROOT)/rtl/bus_wait_ctrl.v \
+    $(ROOT)/rtl/mem_2r1w.v \
+    $(ROOT)/rtl/imem_rom.v \
+    $(ROOT)/sim/cocotb/tb_bus_arbiter.v
+
+COCOTB_TEST_MODULES = bus_arbitration_tests
+TOPLEVEL            = tb_bus_arbiter
+SIM_BUILD           = $(ROOT)/build/sim_bus_arbiter
+
+COMPILE_ARGS += -I$(ROOT)/rtl -g2005
+
+USER_PY311_SITE := $(HOME)/.local/lib/python3.11/site-packages
+export PYTHONPATH := $(USER_PY311_SITE):$(ROOT)/sim/cocotb:$(PYTHONPATH)
+
+COCOTB_MAKEFILES := $(shell python3 -c \
+    "from cocotb_tools.config import makefiles_dir; print(makefiles_dir)")
+
+include $(COCOTB_MAKEFILES)/Makefile.sim
