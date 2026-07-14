@@ -32,6 +32,8 @@ RTL_SRCS := rtl/rv32e_pkg.v \
             rtl/regfile.v \
             rtl/decoder.v \
             rtl/rv32e_core.v \
+            rtl/bus_arbiter.v \
+            rtl/bus_wait_ctrl.v \
             rtl/gpio.v \
             rtl/uart.v \
             rtl/mtimer.v \
